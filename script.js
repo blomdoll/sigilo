@@ -37,12 +37,30 @@ function toast(m) {
 }
 
 function stab(tab) {
-  document.getElementById('lf').style.display = tab === 'login' ? 'block' : 'none';
-  document.getElementById('rf').style.display = tab === 'register' ? 'block' : 'none';
-  document.getElementById('tl').className = 'atab' + (tab === 'login' ? ' on' : '');
-  document.getElementById('tr').className = 'atab' + (tab === 'register' ? ' on' : '');
-  document.getElementById('le').textContent = '';
-  document.getElementById('ree').textContent = '';
+  console.log("Cambiando a pestaña:", tab); // Esto te dirá si el botón responde
+  
+  const loginForm = document.getElementById('lf');
+  const registerForm = document.getElementById('rf');
+  const tabLogin = document.getElementById('tl');
+  const tabRegister = document.getElementById('tr');
+
+  if (tab === 'login') {
+    // Mostrar login, ocultar registro
+    loginForm.style.display = 'block';
+    registerForm.style.display = 'none';
+    
+    // Cambiar estados de los botones
+    tabLogin.classList.add('on');
+    tabRegister.classList.remove('on');
+  } else {
+    // Mostrar registro, ocultar login
+    loginForm.style.display = 'none';
+    registerForm.style.display = 'block';
+    
+    // Cambiar estados de los botones
+    tabRegister.classList.add('on');
+    tabLogin.classList.remove('on');
+  }
 }
 
 // --- AUTENTICACIÓN ---
