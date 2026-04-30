@@ -1,3 +1,7 @@
+const supabaseUrl = 'https://mgzbmpcirzeaqfzrpiro.supabase.co/rest/v1/';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1nemJtcGNpcnplYXFmenJwaXJvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1NzQzNTgsImV4cCI6MjA5MzE1MDM1OH0.igJ1MqmbOSGCICdzWSqcl58zP7OTMQr3zF_g6t0F_1I';
+const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
 const S={
   users:[
     {id:'u1',username:'sage',name:'Sage Aksnes',email:'s@s.com',password:'sage123',bio:'✦ creadora de cosas bonitas ✦',av:null},
