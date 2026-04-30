@@ -25,9 +25,6 @@ const ago = ts => {
 };
 
 const esc = s => s ? s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
-
-// FIX 1: Los UUIDs de Supabase tienen guiones que pueden causar problemas como IDs de DOM.
-// Esta función convierte el UUID en un string seguro para usar como id= en HTML.
 const safeId = id => 'p' + String(id).replace(/[^a-zA-Z0-9]/g, '_');
 
 function toast(m) { 
@@ -44,7 +41,6 @@ function stab(tab) {
   const registerForm = document.getElementById('rf');
   const tabLogin = document.getElementById('tl');
   const tabRegister = document.getElementById('tr');
-
   if (tab === 'login') {
     loginForm.style.display = 'block';
     registerForm.style.display = 'none';
@@ -104,8 +100,6 @@ async function fetchPosts() {
   if (!error) {
     S.posts = data.map(p => ({
       ...p,
-      // FIX 2: Supabase devuelve null si la columna no tiene valor guardado.
-      // Nos aseguramos de que siempre sean arrays, nunca null.
       likes: Array.isArray(p.likes) ? p.likes : [],
       cmts:  Array.isArray(p.cmts)  ? p.cmts  : [],
       saved: Array.isArray(p.saved) ? p.saved : [],
@@ -141,13 +135,13 @@ function nav() {
   if(elActive) elActive.className = 'nbtn on';
 }
 
+// Lee el avatar desde user_metadata.avatar_url (Supabase Auth) o desde avatar_url/av directo
 function avEl(user, big = false) {
   const cls = big ? 'pav' : 'av';
-  // FIX 3: Se revisan más rutas posibles para el nombre, con fallback seguro.
   const name = user?.user_metadata?.display_name || user?.display_name || user?.name || user?.username || user?.email || '?';
   const ini = name.split(' ').map(w => w[0]).filter(Boolean).join('').toUpperCase().slice(0, 2) || '?';
-  
-  if (user?.av) return `<div class="${cls}"><img src="${esc(user.av)}" alt=""/>${big ? '<div class="pavov">cambiar foto</div>' : ''}</div>`;
+  const avatarUrl = user?.user_metadata?.avatar_url || user?.avatar_url || user?.av || null;
+  if (avatarUrl) return `<div class="${cls}"><img src="${esc(avatarUrl)}" alt=""/>${big ? '<div class="pavov">cambiar foto</div>' : ''}</div>`;
   return `<div class="${cls}">${ini}${big ? '<div class="pavov">cambiar foto</div>' : ''}</div>`;
 }
 
@@ -173,24 +167,20 @@ function rfeed() {
 }
 
 function rpost(p) {
-  // FIX 2 (también aquí): doble garantía por si el post llega de otro lado sin pasar por fetchPosts
   const likes = Array.isArray(p.likes) ? p.likes : [];
-  const saved  = Array.isArray(p.saved)  ? p.saved  : [];
-  const cmts   = Array.isArray(p.cmts)   ? p.cmts   : [];
+  const saved  = Array.isArray(p.saved) ? p.saved : [];
+  const cmts   = Array.isArray(p.cmts)  ? p.cmts  : [];
 
   const author = S.users.find(x => x.id === p.user_id) || { 
     name: p.username || 'Usuario', 
     username: p.username || 'Usuario', 
-    av: p.author_av 
+    avatar_url: p.author_av || null
   };
   const liked = likes.includes(S.me.id);
   const isSaved = saved.includes(S.me.id);
   const own = p.user_id === S.me.id;
   const mopen = S.menu === p.id;
   const copen = S.coOpen[p.id];
-
-  // FIX 1: Usamos safeId() para el id del input de comentarios.
-  // El UUID real se sigue pasando como argumento a las funciones JS (eso funciona bien).
   const cid = safeId(p.id);
 
   return `
@@ -221,7 +211,7 @@ function rpost(p) {
         <input class="cinput" id="${cid}" placeholder="escribe un comentario..." onkeydown="if(event.key==='Enter')scmt('${p.id}')"/>
         <button class="sendbtn" onclick="scmt('${p.id}')">↑</button>
       </div>
-      ${cmts.map(c => `<div class="cm">${avEl({name: c.un, username: c.un})} <div class="cmb"><div class="cma">${esc(c.un)}</div><div class="cmt">${esc(c.txt)}</div></div></div>`).join('')}
+      ${cmts.map(c => `<div class="cm">${avEl({name: c.un, username: c.un, avatar_url: c.av || null})} <div class="cmb"><div class="cma">${esc(c.un)}</div><div class="cmt">${esc(c.txt)}</div></div></div>`).join('')}
     </div>` : ''}
   </div>`;
 }
@@ -290,7 +280,8 @@ async function post() {
     body: txt, 
     category: cat, 
     user_id: S.me.id,
-    username: S.me.user_metadata?.display_name || S.me.email
+    username: S.me.user_metadata?.display_name || S.me.email,
+    author_av: S.me.user_metadata?.avatar_url || null
   }]);
   
   if (error) {
@@ -302,55 +293,47 @@ async function post() {
   }
 }
 
-// --- LIKES (persiste en Supabase) ---
+// --- LIKES ---
 async function tlike(id) {
   id = isNaN(id) ? id : Number(id);
   const p = S.posts.find(x => x.id === id); 
   if (!p) return;
-  // FIX 2: garantía extra de que sea array antes de modificar
   if (!Array.isArray(p.likes)) p.likes = [];
   const i = p.likes.indexOf(S.me.id);
   if (i > -1) p.likes.splice(i, 1); 
   else p.likes.push(S.me.id);
-  
   const { error } = await db.from('posts').update({ likes: p.likes }).eq('id', id);
   if (error) toast('Error al dar like');
   else render(); 
 }
 
-// --- GUARDAR (persiste en Supabase) ---
+// --- GUARDAR ---
 async function tsave(id) {
   id = isNaN(id) ? id : Number(id);
   const p = S.posts.find(x => x.id === id); 
   if (!p) return;
-  // FIX 2: garantía extra de que sea array antes de modificar
   if (!Array.isArray(p.saved)) p.saved = [];
   const i = p.saved.indexOf(S.me.id);
   if (i > -1) { p.saved.splice(i, 1); toast('eliminado de guardados'); }
   else { p.saved.push(S.me.id); toast('guardado ◈'); }
-  
   const { error } = await db.from('posts').update({ saved: p.saved }).eq('id', id);
   if (error) toast('Error al guardar');
   else render();
 }
 
-// --- COLECCIÓN (persiste en Supabase) ---
+// --- COLECCIÓN ---
 async function tocol(id) {
   id = isNaN(id) ? id : Number(id);
   const p = S.posts.find(x => x.id === id);
   if (!p) return;
   p.col = !p.col;
   S.menu = null;
-  
   const { error } = await db.from('posts').update({ col: p.col }).eq('id', id);
   if (error) toast('Error al actualizar colección');
-  else {
-    toast(p.col ? 'añadido a colección ⊞' : 'eliminado de colección');
-    render();
-  }
+  else { toast(p.col ? 'añadido a colección ⊞' : 'eliminado de colección'); render(); }
 }
 
-// --- ELIMINAR (persiste en Supabase) ---
+// --- ELIMINAR ---
 async function dpost(id) {
   id = isNaN(id) ? id : Number(id);
   const { error } = await db.from('posts').delete().eq('id', id);
@@ -364,32 +347,29 @@ async function dpost(id) {
   }
 }
 
-// --- COMENTARIOS (persiste en Supabase) ---
+// --- COMENTARIOS ---
 function tcmt(id) { id = isNaN(id) ? id : Number(id); S.coOpen[id] = !S.coOpen[id]; render(); }
 
 async function scmt(id) {
   id = isNaN(id) ? id : Number(id);
-  // FIX 1: usamos safeId() para buscar el input en el DOM
   const inp = document.getElementById(safeId(id));
   if (!inp) return;
   const txt = inp.value.trim();
   if (!txt) return;
   const p = S.posts.find(x => x.id === id);
   if (!p) return;
-  // FIX 2: garantía extra
   if (!Array.isArray(p.cmts)) p.cmts = [];
-  
   p.cmts.push({ 
     id: uid(), 
     uid: S.me.id, 
-    un: S.me.user_metadata?.display_name || S.me.email, 
+    un: S.me.user_metadata?.display_name || S.me.email,
+    av: S.me.user_metadata?.avatar_url || null,
     txt, 
     t: Date.now() 
   });
-  
   const { error } = await db.from('posts').update({ cmts: p.cmts }).eq('id', id);
   if (error) {
-    p.cmts.pop(); // revertir si falla
+    p.cmts.pop();
     toast('Error al comentar');
   } else {
     inp.value = '';
@@ -397,16 +377,34 @@ async function scmt(id) {
   }
 }
 
-// --- AVATAR ---
+// --- AVATAR (sube a Supabase Storage y guarda URL en user_metadata) ---
 function upavatar() { document.getElementById('avup').click(); }
-function havatar(e) {
-  const f = e.target.files[0]; if (!f) return;
-  const r = new FileReader();
-  r.onload = ev => {
-    S.me.av = ev.target.result;
-    render(); toast('foto actualizada ✦');
-  };
-  r.readAsDataURL(f);
+
+async function havatar(e) {
+  const f = e.target.files[0];
+  if (!f) return;
+  toast('subiendo foto...');
+
+  const ext = f.name.split('.').pop();
+  const path = `${S.me.id}.${ext}`;
+
+  const { error: upErr } = await db.storage
+    .from('avatars')
+    .upload(path, f, { upsert: true, contentType: f.type });
+
+  if (upErr) { toast('Error al subir imagen'); return; }
+
+  const { data } = db.storage.from('avatars').getPublicUrl(path);
+  const url = data.publicUrl;
+
+  const { error: authErr } = await db.auth.updateUser({
+    data: { avatar_url: url }
+  });
+  if (authErr) { toast('Error al guardar avatar'); return; }
+
+  S.me.user_metadata.avatar_url = url;
+  render();
+  toast('foto actualizada ✦');
 }
 
 // --- MODAL PERFIL ---
@@ -418,11 +416,7 @@ async function savemod() {
   const n = document.getElementById('en').value.trim();
   const b = document.getElementById('eb').value.trim();
   if (!n) return;
-  
-  const { error } = await db.auth.updateUser({
-    data: { display_name: n, bio: b }
-  });
-  
+  const { error } = await db.auth.updateUser({ data: { display_name: n, bio: b } });
   if (error) {
     toast('Error al guardar perfil');
   } else {
