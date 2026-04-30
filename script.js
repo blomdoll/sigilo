@@ -75,6 +75,17 @@ function boot(){
   gofeed();
 }
 
+async function fetchPosts() {
+  const { data, error } = await supabase
+    .from('posts')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (!error) {
+    S.posts = data; // Llenamos nuestro estado local con los datos reales
+    render();[cite: 2]
+  }
+
 function logout(){
   S.me=null;
   document.getElementById('app').style.display='none';
