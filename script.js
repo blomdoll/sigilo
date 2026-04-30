@@ -1,4 +1,4 @@
-// 1. Configuración de conexión (Asegúrate de que la URL no tenga el formato de link de Markdown)
+// 1. Configuración de conexión
 const supabaseUrl = 'https://mgzbmpcirzeaqfzrpiro.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1nemJtcGNpcnplYXFmenJwaXJvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1NzQzNTgsImV4cCI6MjA5MzE1MDM1OH0.igJ1MqmbOSGCICdzWSqcl58zP7OTMQr3zF_g6t0F_1I';
 const db = window.supabase.createClient(supabaseUrl, supabaseKey);
@@ -19,7 +19,6 @@ const S = {
 const CATS = ['todos', 'decoraciones', 'letras', 'símbolos', 'biografías', 'usernames', 'nombres'];
 const uid = () => 'x' + Math.random().toString(36).slice(2);
 
-// Corregido: ago ahora maneja correctamente la diferencia de tiempo
 const ago = ts => { 
   const d = Date.now() - new Date(ts).getTime(); 
   return d < 60000 ? 'ahora' : d < 3600000 ? ~~(d / 60000) + 'm' : d < 86400000 ? ~~(d / 3600000) + 'h' : ~~(d / 86400000) + 'd'; 
@@ -37,27 +36,19 @@ function toast(m) {
 }
 
 function stab(tab) {
-  console.log("Cambiando a pestaña:", tab); // Esto te dirá si el botón responde
-  
   const loginForm = document.getElementById('lf');
   const registerForm = document.getElementById('rf');
   const tabLogin = document.getElementById('tl');
   const tabRegister = document.getElementById('tr');
 
   if (tab === 'login') {
-    // Mostrar login, ocultar registro
     loginForm.style.display = 'block';
     registerForm.style.display = 'none';
-    
-    // Cambiar estados de los botones
     tabLogin.classList.add('on');
     tabRegister.classList.remove('on');
   } else {
-    // Mostrar registro, ocultar login
     loginForm.style.display = 'none';
     registerForm.style.display = 'block';
-    
-    // Cambiar estados de los botones
     tabRegister.classList.add('on');
     tabLogin.classList.remove('on');
   }
@@ -112,7 +103,7 @@ async function fetchPosts() {
       likes: p.likes || [],
       cmts: p.cmts || [],
       saved: p.saved || [],
-      t: p.created_at // Mapeo para compatibilidad con tu función ago
+      t: p.created_at
     }));
     render();
   }
@@ -145,8 +136,7 @@ function nav() {
 
 function avEl(user, big = false) {
   const cls = big ? 'pav' : 'av';
-  // Lógica de iniciales recuperada de tu original
-  const name = user?.user_metadata?.display_name || user?.name || user?.email || '?';
+  const name = user?.user_metadata?.display_name || user?.name || user?.username || user?.email || '?';
   const ini = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
   
   if (user?.av) return `<div class="${cls}"><img src="${user.av}" alt=""/>${big ? '<div class="pavov">cambiar foto</div>' : ''}</div>`;
@@ -269,11 +259,8 @@ async function post() {
   const txt = document.getElementById('ct').value.trim();
   const cat = document.getElementById('cc').value;
   if (!txt) return toast('escribe algo primero ✦');
-
-  console.log('user id:', S.me?.id);
-  console.log('metadata:', S.me?.user_metadata);
-
-  const { data, error } = await db.from('posts').insert([{ 
+  
+  const { error } = await db.from('posts').insert([{ 
     body: txt, 
     category: cat, 
     user_id: S.me.id,
@@ -281,7 +268,6 @@ async function post() {
   }]);
   
   if (error) {
-    console.error('Error detallado:', error);
     toast('Error: ' + error.message);
   } else { 
     document.getElementById('ct').value = ''; 
@@ -290,52 +276,90 @@ async function post() {
   }
 }
 
-function tlike(id) { 
+// --- LIKES (persiste en Supabase) ---
+async function tlike(id) { 
   const p = S.posts.find(x => x.id === id); 
   if (!p) return;
   const i = p.likes.indexOf(S.me.id);
-  if (i > -1) p.likes.splice(i, 1); else p.likes.push(S.me.id);
-  render(); 
+  if (i > -1) p.likes.splice(i, 1); 
+  else p.likes.push(S.me.id);
+  
+  const { error } = await db.from('posts').update({ likes: p.likes }).eq('id', id);
+  if (error) toast('Error al dar like');
+  else render(); 
 }
 
-function tsave(id) {
+// --- GUARDAR (persiste en Supabase) ---
+async function tsave(id) {
   const p = S.posts.find(x => x.id === id); 
   if (!p) return;
   const i = p.saved.indexOf(S.me.id);
   if (i > -1) { p.saved.splice(i, 1); toast('eliminado de guardados'); }
   else { p.saved.push(S.me.id); toast('guardado ◈'); }
-  render();
+  
+  const { error } = await db.from('posts').update({ saved: p.saved }).eq('id', id);
+  if (error) toast('Error al guardar');
+  else render();
 }
 
-function tocol(id) {
+// --- COLECCIÓN (persiste en Supabase) ---
+async function tocol(id) {
   const p = S.posts.find(x => x.id === id);
   if (!p) return;
-  p.col = !p.col; S.menu = null;
-  toast(p.col ? 'añadido a colección ⊞' : 'eliminado de colección');
-  render();
-}
-
-function dpost(id) {
-  S.posts = S.posts.filter(x => x.id !== id);
+  p.col = !p.col;
   S.menu = null;
-  toast('publicación eliminada');
-  render();
+  
+  const { error } = await db.from('posts').update({ col: p.col }).eq('id', id);
+  if (error) toast('Error al actualizar colección');
+  else {
+    toast(p.col ? 'añadido a colección ⊞' : 'eliminado de colección');
+    render();
+  }
 }
 
+// --- ELIMINAR (persiste en Supabase) ---
+async function dpost(id) {
+  const { error } = await db.from('posts').delete().eq('id', id);
+  if (error) {
+    toast('Error al eliminar');
+  } else {
+    S.posts = S.posts.filter(x => x.id !== id);
+    S.menu = null;
+    toast('publicación eliminada');
+    render();
+  }
+}
+
+// --- COMENTARIOS (persiste en Supabase) ---
 function tcmt(id) { S.coOpen[id] = !S.coOpen[id]; render(); }
 
-function scmt(id) {
+async function scmt(id) {
   const inp = document.getElementById('ci' + id);
   if (!inp) return;
   const txt = inp.value.trim();
   if (!txt) return;
   const p = S.posts.find(x => x.id === id);
   if (!p) return;
-  p.cmts.push({ id: uid(), uid: S.me.id, un: S.me.user_metadata.display_name || S.me.email, txt, t: Date.now() });
-  inp.value = '';
-  render();
+  
+  p.cmts.push({ 
+    id: uid(), 
+    uid: S.me.id, 
+    un: S.me.user_metadata?.display_name || S.me.email, 
+    txt, 
+    t: Date.now() 
+  });
+  
+  const { error } = await db.from('posts').update({ cmts: p.cmts }).eq('id', id);
+  if (error) {
+    p.cmts.pop(); // revertir si falla
+    toast('Error al comentar');
+  } else {
+    inp.value = '';
+    render();
+  }
 }
 
+// --- AVATAR ---
 function upavatar() { document.getElementById('avup').click(); }
 function havatar(e) {
   const f = e.target.files[0]; if (!f) return;
@@ -347,18 +371,34 @@ function havatar(e) {
   r.readAsDataURL(f);
 }
 
+// --- MODAL PERFIL ---
 function openmod() { S.modal = true; render(); }
 function closemod() { S.modal = false; render(); }
 function mclose(e) { if (e.target === e.currentTarget) closemod(); }
 
-function savemod() {
+async function savemod() {
   const n = document.getElementById('en').value.trim();
   const b = document.getElementById('eb').value.trim();
   if (!n) return;
-  // Actualizamos el estado local del usuario (metadata de Supabase)
-  S.me.user_metadata.display_name = n;
-  S.me.user_metadata.bio = b;
-  S.modal = false; 
-  render(); 
-  toast('perfil actualizado ✦');
+  
+  const { error } = await db.auth.updateUser({
+    data: { display_name: n, bio: b }
+  });
+  
+  if (error) {
+    toast('Error al guardar perfil');
+  } else {
+    S.me.user_metadata.display_name = n;
+    S.me.user_metadata.bio = b;
+    S.modal = false; 
+    render(); 
+    toast('perfil actualizado ✦');
+  }
 }
+// Verificar sesión al cargar
+db.auth.getSession().then(({ data: { session } }) => {
+  if (session) {
+    S.me = session.user;
+    boot();
+  }
+});
