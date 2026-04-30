@@ -269,16 +269,21 @@ async function post() {
   const txt = document.getElementById('ct').value.trim();
   const cat = document.getElementById('cc').value;
   if (!txt) return toast('escribe algo primero ✦');
-  
-  const { error } = await db.from('posts').insert([{ 
+
+  console.log('user id:', S.me?.id);
+  console.log('metadata:', S.me?.user_metadata);
+
+  const { data, error } = await db.from('posts').insert([{ 
     body: txt, 
     category: cat, 
     user_id: S.me.id,
-    username: S.me.user_metadata.display_name 
+    username: S.me.user_metadata?.display_name || S.me.email
   }]);
   
-  if (error) toast('Error al publicar');
-  else { 
+  if (error) {
+    console.error('Error detallado:', error);
+    toast('Error: ' + error.message);
+  } else { 
     document.getElementById('ct').value = ''; 
     fetchPosts(); 
     toast('publicado en la nube ✦'); 
