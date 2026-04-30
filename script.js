@@ -37,17 +37,28 @@ function login(){
   S.me=user;boot();
 }
 
-function register(){
-  const n=document.getElementById('rn').value.trim();
-  const u=document.getElementById('ru').value.trim();
-  const e=document.getElementById('re').value.trim();
-  const p=document.getElementById('rp').value;
-  if(!n||!u||!e||!p){document.getElementById('ree').textContent='Completa todos los campos.';return;}
-  if(S.users.find(x=>x.username===u)){document.getElementById('ree').textContent='Ese usuario ya existe.';return;}
-  const user={id:uid(),username:u,name:n,email:e,password:p,bio:'',av:null};
-  S.users.push(user);S.me=user;boot();
-}
+async function register() {
+  const email = document.getElementById('re').value.trim();
+  const password = document.getElementById('rp').value;
+  const username = document.getElementById('ru').value.trim();
 
+  // Supabase se encarga de crear el usuario y validar el correo
+  const { data, error } = await supabase.auth.signUp({
+    email: email,
+    password: password,
+    options: {
+      data: { display_name: username } // Guardamos el username en los metadatos
+    }
+  });
+
+  if (error) {
+    document.getElementById('ree').textContent = error.message;[cite: 2]
+  } else {
+    toast('¡Cuenta creada! Revisa tu correo de confirmación.');
+    S.me = data.user; 
+    boot();[cite: 2]
+  }
+  
 function boot(){
   document.getElementById('auth').style.display='none';
   document.getElementById('app').style.display='flex';
