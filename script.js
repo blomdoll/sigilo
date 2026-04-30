@@ -254,7 +254,12 @@ function rprofile() {
 function setcat(c) { S.cat = c; S.menu = null; render(); }
 function stptab(t) { S.ptab = t; render(); }
 function tmenu(id, e) { e.stopPropagation(); S.menu = S.menu === id ? null : id; render(); }
-document.addEventListener('click', () => { if (S.menu) { S.menu = null; render(); } });
+document.addEventListener('click', (e) => { 
+  if (S.menu && !e.target.closest('.mwrap')) { 
+    S.menu = null; 
+    render(); 
+  } 
+});
 
 async function post() {
   const txt = document.getElementById('ct').value.trim();
