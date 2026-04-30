@@ -26,6 +26,10 @@ const ago = ts => {
 
 const esc = s => s ? s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
 
+// FIX 1: Los UUIDs de Supabase tienen guiones que pueden causar problemas como IDs de DOM.
+// Esta función convierte el UUID en un string seguro para usar como id= en HTML.
+const safeId = id => 'p' + String(id).replace(/[^a-zA-Z0-9]/g, '_');
+
 function toast(m) { 
   const t = document.getElementById('toast'); 
   if(t) {
@@ -100,9 +104,11 @@ async function fetchPosts() {
   if (!error) {
     S.posts = data.map(p => ({
       ...p,
-      likes: p.likes || [],
-      cmts: p.cmts || [],
-      saved: p.saved || [],
+      // FIX 2: Supabase devuelve null si la columna no tiene valor guardado.
+      // Nos aseguramos de que siempre sean arrays, nunca null.
+      likes: Array.isArray(p.likes) ? p.likes : [],
+      cmts:  Array.isArray(p.cmts)  ? p.cmts  : [],
+      saved: Array.isArray(p.saved) ? p.saved : [],
       t: p.created_at
     }));
     render();
@@ -137,10 +143,11 @@ function nav() {
 
 function avEl(user, big = false) {
   const cls = big ? 'pav' : 'av';
-  const name = user?.user_metadata?.display_name || user?.name || user?.username || user?.email || '?';
-  const ini = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+  // FIX 3: Se revisan más rutas posibles para el nombre, con fallback seguro.
+  const name = user?.user_metadata?.display_name || user?.display_name || user?.name || user?.username || user?.email || '?';
+  const ini = name.split(' ').map(w => w[0]).filter(Boolean).join('').toUpperCase().slice(0, 2) || '?';
   
-  if (user?.av) return `<div class="${cls}"><img src="${user.av}" alt=""/>${big ? '<div class="pavov">cambiar foto</div>' : ''}</div>`;
+  if (user?.av) return `<div class="${cls}"><img src="${esc(user.av)}" alt=""/>${big ? '<div class="pavov">cambiar foto</div>' : ''}</div>`;
   return `<div class="${cls}">${ini}${big ? '<div class="pavov">cambiar foto</div>' : ''}</div>`;
 }
 
@@ -166,12 +173,25 @@ function rfeed() {
 }
 
 function rpost(p) {
-  const author = S.users.find(x => x.id === p.user_id) || { name: p.username || 'Usuario', username: p.username || 'Usuario', av: p.author_av };
-  const liked = p.likes.includes(S.me.id);
-  const saved = p.saved.includes(S.me.id);
+  // FIX 2 (también aquí): doble garantía por si el post llega de otro lado sin pasar por fetchPosts
+  const likes = Array.isArray(p.likes) ? p.likes : [];
+  const saved  = Array.isArray(p.saved)  ? p.saved  : [];
+  const cmts   = Array.isArray(p.cmts)   ? p.cmts   : [];
+
+  const author = S.users.find(x => x.id === p.user_id) || { 
+    name: p.username || 'Usuario', 
+    username: p.username || 'Usuario', 
+    av: p.author_av 
+  };
+  const liked = likes.includes(S.me.id);
+  const isSaved = saved.includes(S.me.id);
   const own = p.user_id === S.me.id;
   const mopen = S.menu === p.id;
   const copen = S.coOpen[p.id];
+
+  // FIX 1: Usamos safeId() para el id del input de comentarios.
+  // El UUID real se sigue pasando como argumento a las funciones JS (eso funciona bien).
+  const cid = safeId(p.id);
 
   return `
   <div class="pcard">
@@ -192,16 +212,16 @@ function rpost(p) {
     </div>
     <div class="pcontent">${esc(p.body)}</div>
     <div class="pacts">
-      <button class="abtn${liked ? ' liked' : ''}" onclick="tlike('${p.id}')">♡ ${p.likes.length}</button>
-      <button class="abtn" onclick="tcmt('${p.id}')">◌ ${p.cmts.length}</button>
-      <button class="abtn${saved ? ' sav' : ''}" onclick="tsave('${p.id}')">◈ ${saved ? 'guardado' : 'guardar'}</button>
+      <button class="abtn${liked ? ' liked' : ''}" onclick="tlike('${p.id}')">♡ ${likes.length}</button>
+      <button class="abtn" onclick="tcmt('${p.id}')">◌ ${cmts.length}</button>
+      <button class="abtn${isSaved ? ' sav' : ''}" onclick="tsave('${p.id}')">◈ ${isSaved ? 'guardado' : 'guardar'}</button>
     </div>
     ${copen ? `<div class="csec">
       <div class="crow">
-        <input class="cinput" id="ci${p.id}" placeholder="escribe un comentario..." onkeydown="if(event.key==='Enter')scmt('${p.id}')"/>
+        <input class="cinput" id="${cid}" placeholder="escribe un comentario..." onkeydown="if(event.key==='Enter')scmt('${p.id}')"/>
         <button class="sendbtn" onclick="scmt('${p.id}')">↑</button>
       </div>
-      ${p.cmts.map(c => `<div class="cm">${avEl({name: c.un})} <div class="cmb"><div class="cma">${esc(c.un)}</div><div class="cmt">${esc(c.txt)}</div></div></div>`).join('')}
+      ${cmts.map(c => `<div class="cm">${avEl({name: c.un, username: c.un})} <div class="cmb"><div class="cma">${esc(c.un)}</div><div class="cmt">${esc(c.txt)}</div></div></div>`).join('')}
     </div>` : ''}
   </div>`;
 }
@@ -211,7 +231,7 @@ function rprofile() {
   const own = user.id === S.me.id;
   const tab = S.ptab;
   const myp = S.posts.filter(p => p.user_id === user.id);
-  const svd = S.posts.filter(p => p.saved.includes(S.me.id));
+  const svd = S.posts.filter(p => Array.isArray(p.saved) && p.saved.includes(S.me.id));
   const col = S.posts.filter(p => p.user_id === S.me.id && p.col);
 
   return `
@@ -286,6 +306,8 @@ async function post() {
 async function tlike(id) { 
   const p = S.posts.find(x => x.id === id); 
   if (!p) return;
+  // FIX 2: garantía extra de que sea array antes de modificar
+  if (!Array.isArray(p.likes)) p.likes = [];
   const i = p.likes.indexOf(S.me.id);
   if (i > -1) p.likes.splice(i, 1); 
   else p.likes.push(S.me.id);
@@ -299,6 +321,8 @@ async function tlike(id) {
 async function tsave(id) {
   const p = S.posts.find(x => x.id === id); 
   if (!p) return;
+  // FIX 2: garantía extra de que sea array antes de modificar
+  if (!Array.isArray(p.saved)) p.saved = [];
   const i = p.saved.indexOf(S.me.id);
   if (i > -1) { p.saved.splice(i, 1); toast('eliminado de guardados'); }
   else { p.saved.push(S.me.id); toast('guardado ◈'); }
@@ -340,12 +364,15 @@ async function dpost(id) {
 function tcmt(id) { S.coOpen[id] = !S.coOpen[id]; render(); }
 
 async function scmt(id) {
-  const inp = document.getElementById('ci' + id);
+  // FIX 1: usamos safeId() para buscar el input en el DOM
+  const inp = document.getElementById(safeId(id));
   if (!inp) return;
   const txt = inp.value.trim();
   if (!txt) return;
   const p = S.posts.find(x => x.id === id);
   if (!p) return;
+  // FIX 2: garantía extra
+  if (!Array.isArray(p.cmts)) p.cmts = [];
   
   p.cmts.push({ 
     id: uid(), 
