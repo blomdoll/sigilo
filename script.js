@@ -30,7 +30,7 @@ function stab(tab){
 }
 
 async function login() {
-  const email = document.getElementById('lu').value.trim(); // Nota: Supabase usa email por defecto
+  const email = document.getElementById('lu').value.trim();
   const password = document.getElementById('lp').value;
 
   const { data, error } = await supabase.auth.signInWithPassword({
@@ -39,10 +39,10 @@ async function login() {
   });
 
   if (error) {
-    document.getElementById('le').textContent = 'Error: ' + error.message;[cite: 2]
+    document.getElementById('le').textContent = 'Error: ' + error.message;
   } else {
     S.me = data.user;
-    boot();[cite: 2]
+    boot();
   }
 }
 
@@ -51,21 +51,20 @@ async function register() {
   const password = document.getElementById('rp').value;
   const username = document.getElementById('ru').value.trim();
 
-  // Supabase se encarga de crear el usuario y validar el correo
   const { data, error } = await supabase.auth.signUp({
     email: email,
     password: password,
     options: {
-      data: { display_name: username } // Guardamos el username en los metadatos
+      data: { display_name: username }
     }
   });
 
   if (error) {
-    document.getElementById('ree').textContent = error.message;[cite: 2]
+    document.getElementById('ree').textContent = error.message;
   } else {
     toast('¡Cuenta creada! Revisa tu correo de confirmación.');
     S.me = data.user; 
-    boot();[cite: 2]
+    boot();
   }
 }
 
