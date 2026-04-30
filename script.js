@@ -19,9 +19,11 @@ const S = {
 const CATS = ['todos', 'decoraciones', 'letras', 'símbolos', 'biografías', 'usernames', 'nombres'];
 const uid = () => 'x' + Math.random().toString(36).slice(2);
 
-const ago = ts => { 
-  const d = Date.now() - new Date(ts).getTime(); 
-  return d < 60000 ? 'ahora' : d < 3600000 ? ~~(d / 60000) + 'm' : d < 86400000 ? ~~(d / 3600000) + 'h' : ~~(d / 86400000) + 'd'; 
+const ago = ts => {
+  if (!ts) return '';
+  const d = Date.now() - new Date(ts).getTime();
+  if (isNaN(d) || d < 0) return '';
+  return d < 60000 ? 'ahora' : d < 3600000 ? ~~(d / 60000) + 'm' : d < 86400000 ? ~~(d / 3600000) + 'h' : ~~(d / 86400000) + 'd';
 };
 
 const esc = s => s ? s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
