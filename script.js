@@ -401,6 +401,30 @@ async function savemod() {
     toast('perfil actualizado ✦');
   }
 }
+
+window.tlike = tlike;
+window.tsave = tsave;
+window.tcmt = tcmt;
+window.scmt = scmt;
+window.tocol = tocol;
+window.dpost = dpost;
+window.tmenu = tmenu;
+window.vprof = vprof;
+window.post = post;
+window.setcat = setcat;
+window.stptab = stptab;
+window.gofeed = gofeed;
+window.goprofile = goprofile;
+window.logout = logout;
+window.openmod = openmod;
+window.closemod = closemod;
+window.mclose = mclose;
+window.savemod = savemod;
+window.upavatar = upavatar;
+window.stab = stab;
+window.login = login;
+window.register = register;
+
 // Verificar sesión al cargar
 db.auth.getSession().then(({ data: { session } }) => {
   if (session) {
