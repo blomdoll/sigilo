@@ -109,7 +109,8 @@ async function fetchPosts() {
   }
 }
 
-function logout() {
+async function logout() {
+  await db.auth.signOut();
   S.me = null;
   document.getElementById('app').style.display = 'none';
   document.getElementById('auth').style.display = 'flex';
