@@ -211,13 +211,32 @@ function stptab(t){S.ptab=t;render();}
 function tmenu(id,e){e.stopPropagation();S.menu=S.menu===id?null:id;render();}
 document.addEventListener('click',()=>{if(S.menu){S.menu=null;render();}});
 
-function post(){
-  const txt=document.getElementById('ct').value.trim();
-  const cat=document.getElementById('cc').value;
-  if(!txt){toast('escribe algo primero ✦');return;}
-  S.posts.unshift({id:uid(),uid:S.me.id,un:S.me.username,cat,body:txt,t:Date.now(),likes:[],cmts:[],saved:[],col:false});
-  render();toast('publicado ✦');
-}
+async function post() {
+  const txt = document.getElementById('ct').value.trim();[cite: 2]
+  const cat = document.getElementById('cc').value;[cite: 2]
+
+  if (!txt) {
+    toast('escribe algo primero ✦');[cite: 2]
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from('posts')
+    .insert([
+      { 
+        body: txt, 
+        category: cat, 
+        user_id: S.me.id 
+      }
+    ]);
+
+  if (error) {
+    toast('Error al publicar');
+  } else {
+    document.getElementById('ct').value = ''; // Limpiar textarea
+    render(); // Refrescar la vista
+    toast('publicado en la nube ✦');
+  }
 
 function tlike(id){
   const p=S.posts.find(x=>x.id===id);if(!p)return;
