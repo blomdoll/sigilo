@@ -3,16 +3,16 @@ const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 const supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
 const S={
-  users:[
-    {id:'u1',username:'sage',name:'Sage Aksnes',email:'s@s.com',password:'sage123',bio:'✦ creadora de cosas bonitas ✦',av:null},
-    {id:'u2',username:'luna',name:'Luna Rossi',email:'l@l.com',password:'luna123',bio:'coleccionando palabras y momentos',av:null}
-  ],
-  posts:[
-    {id:'p1',uid:'u2',un:'luna',cat:'decoraciones',body:'꒰ᐢ. .ᐢ꒱ ₊˚⊹ ✿ ﾟ. ˛ °\n\n彡★ bienvenida a sigilo ★彡\n\n꒰˶• ༝ •˶꒱ ♡',t:Date.now()-7200000,likes:[],cmts:[],saved:[],col:false},
-    {id:'p2',uid:'u1',un:'sage',cat:'usernames',body:'ideas de usernames para estética cottagecore:\n\n☁️ meadow.dew\n🌿 fern.and.fog\n🌸 petal.drift\n🍄 mossy.creek\n✨ dewdrop.lane',t:Date.now()-3600000,likes:['u2'],cmts:[{id:'c1',uid:'u2',un:'luna',txt:'¡me encanta meadow.dew! 🌸',t:Date.now()-1800000}],saved:[],col:false},
-    {id:'p3',uid:'u2',un:'luna',cat:'biografías',body:'bio ideas 🌙\n\n「 soñando en cursiva 」\n\n❝ collecting sunsets and sad songs ❞\n\n·˚ ༘ a girl made of stardust and soft things ⋆。˚',t:Date.now()-1800000,likes:[],cmts:[],saved:[],col:false}
-  ],
-  me:null,page:'feed',ptab:'posts',puid:null,modal:false,coOpen:{},cat:'todos',menu:null
+  users:[], 
+  posts:[],
+  me:null,
+  page:'feed',
+  ptab:'posts',
+  puid:null,
+  modal:false,
+  coOpen:{},
+  cat:'todos',
+  menu:null
 };
 const CATS=['todos','decoraciones','letras','símbolos','biografías','usernames','nombres'];
 const uid=()=>'x'+Math.random().toString(36).slice(2);
