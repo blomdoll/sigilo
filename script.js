@@ -44,6 +44,7 @@ async function login() {
     S.me = data.user;
     boot();[cite: 2]
   }
+}
 
 async function register() {
   const email = document.getElementById('re').value.trim();
@@ -66,7 +67,8 @@ async function register() {
     S.me = data.user; 
     boot();[cite: 2]
   }
-  
+}
+
 function boot(){
   document.getElementById('auth').style.display='none';
   document.getElementById('app').style.display='flex';
@@ -85,6 +87,7 @@ async function fetchPosts() {
     S.posts = data; // Llenamos nuestro estado local con los datos reales
     render();[cite: 2]
   }
+}
 
 function logout(){
   S.me=null;
@@ -248,7 +251,8 @@ async function post() {
     render(); // Refrescar la vista
     toast('publicado en la nube ✦');
   }
-
+}
+  
 function tlike(id){
   const p=S.posts.find(x=>x.id===id);if(!p)return;
   const i=p.likes.indexOf(S.me.id);
