@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sigilo - Red social de arte en texto</title>
+  
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  
+  <!-- Estilos -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Pantalla de autenticación -->
+  <div id="auth">
+    <div class="acard">
+      <div class="alogo">✦ sigilo</div>
+      <div class="asub">una comunidad para compartir arte en texto</div>
+      <div class="atabs">
+        <button class="atab on" id="tl" onclick="stab('login')">Ingresar</button>
+        <button class="atab" id="tr" onclick="stab('register')">Registrarse</button>
+      </div>
+      <div id="lf">
+        <div class="field"><label>Nombre de usuario</label><input id="lu" placeholder="tu_usuario"/></div>
+        <div class="field"><label>Contraseña</label><input type="password" id="lp" placeholder="••••••••"/></div>
+        <button class="btn-fill" onclick="login()">Ingresar</button>
+        <div class="aerr" id="le"></div>
+      </div>
+      <div id="rf" style="display:none">
+        <div class="field"><label>Nombre completo</label><input id="rn" placeholder="Tu nombre"/></div>
+        <div class="field"><label>Nombre de usuario</label><input id="ru" placeholder="tu_usuario"/></div>
+        <div class="field"><label>Correo electrónico</label><input type="email" id="re" placeholder="correo@ejemplo.com"/></div>
+        <div class="field"><label>Contraseña</label><input type="password" id="rp" placeholder="••••••••"/></div>
+        <button class="btn-fill" onclick="register()">Crear cuenta</button>
+        <div class="aerr" id="ree"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pantalla principal de la aplicación -->
+  <div id="app">
+    <header>
+      <div class="hlogo" onclick="gofeed()">✦ sigilo</div>
+      <nav class="hnav">
+        <button class="nbtn" id="nf" onclick="gofeed()">inicio</button>
+        <button class="nbtn" id="np" onclick="goprofile()">perfil</button>
+        <button class="nlog" onclick="logout()" title="Salir">⇥</button>
+      </nav>
+    </header>
+    <main id="mc"></main>
+    <footer>Creado por <b>Sage Aksnes / @blomdoll</b></footer>
+  </div>
+
+  <!-- Notificación toast -->
+  <div class="toast" id="toast"></div>
+
+  <!-- Script principal -->
+  <script src="script.js"></script>
+</body>
+</html>
