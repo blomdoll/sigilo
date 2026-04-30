@@ -1,12 +1,7 @@
-// 1. Configuración de conexión
+// 1. Configuración de conexión (Asegúrate de que la URL no tenga el formato de link de Markdown)
 const supabaseUrl = 'https://mgzbmpcirzeaqfzrpiro.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1nemJtcGNpcnplYXFmenJwaXJvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1NzQzNTgsImV4cCI6MjA5MzE1MDM1OH0.igJ1MqmbOSGCICdzWSqcl58zP7OTMQr3zF_g6t0F_1I';
-let supabase;
-try {
-  supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
-} catch(e) {
-  console.error('Supabase no pudo inicializarse:', e);
-}
+const db = window.supabase.createClient(supabaseUrl, supabaseKey);
 
 const S = {
   users: [], 
@@ -73,7 +68,7 @@ function stab(tab) {
 async function login() {
   const email = document.getElementById('lu').value.trim();
   const password = document.getElementById('lp').value;
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  const { data, error } = await db.auth.signInWithPassword({ email, password });
   if (error) {
     document.getElementById('le').textContent = 'Error: ' + error.message;
   } else {
@@ -86,7 +81,7 @@ async function register() {
   const email = document.getElementById('re').value.trim();
   const password = document.getElementById('rp').value;
   const username = document.getElementById('ru').value.trim();
-  const { data, error } = await supabase.auth.signUp({
+  const { data, error } = await db.auth.signUp({
     email,
     password,
     options: { data: { display_name: username } }
@@ -110,7 +105,7 @@ function boot() {
 }
 
 async function fetchPosts() {
-  const { data, error } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
+  const { data, error } = await db.from('posts').select('*').order('created_at', { ascending: false });
   if (!error) {
     S.posts = data.map(p => ({
       ...p,
@@ -275,7 +270,7 @@ async function post() {
   const cat = document.getElementById('cc').value;
   if (!txt) return toast('escribe algo primero ✦');
   
-  const { error } = await supabase.from('posts').insert([{ 
+  const { error } = await db.from('posts').insert([{ 
     body: txt, 
     category: cat, 
     user_id: S.me.id,
