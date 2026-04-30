@@ -29,13 +29,21 @@ function stab(tab){
   document.getElementById('ree').textContent='';
 }
 
-function login(){
-  const u=document.getElementById('lu').value.trim();
-  const p=document.getElementById('lp').value;
-  const user=S.users.find(x=>x.username===u&&x.password===p);
-  if(!user){document.getElementById('le').textContent='Usuario o contraseña incorrectos.';return;}
-  S.me=user;boot();
-}
+async function login() {
+  const email = document.getElementById('lu').value.trim(); // Nota: Supabase usa email por defecto
+  const password = document.getElementById('lp').value;
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: email,
+    password: password,
+  });
+
+  if (error) {
+    document.getElementById('le').textContent = 'Error: ' + error.message;[cite: 2]
+  } else {
+    S.me = data.user;
+    boot();[cite: 2]
+  }
 
 async function register() {
   const email = document.getElementById('re').value.trim();
