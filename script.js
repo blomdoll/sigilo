@@ -273,7 +273,7 @@ function rprofile() {
 
 function setcat(c) { S.cat = c; S.menu = null; render(); }
 function stptab(t) { S.ptab = t; render(); }
-function tmenu(id, e) { e.stopPropagation(); S.menu = S.menu === id ? null : id; render(); }
+function tmenu(id, e) { e.stopPropagation(); id = isNaN(id) ? id : Number(id); S.menu = S.menu === id ? null : id; render(); }
 document.addEventListener('click', (e) => { 
   if (S.menu && !e.target.closest('.mwrap')) { 
     S.menu = null; 
@@ -303,7 +303,8 @@ async function post() {
 }
 
 // --- LIKES (persiste en Supabase) ---
-async function tlike(id) { 
+async function tlike(id) {
+  id = isNaN(id) ? id : Number(id);
   const p = S.posts.find(x => x.id === id); 
   if (!p) return;
   // FIX 2: garantía extra de que sea array antes de modificar
@@ -319,6 +320,7 @@ async function tlike(id) {
 
 // --- GUARDAR (persiste en Supabase) ---
 async function tsave(id) {
+  id = isNaN(id) ? id : Number(id);
   const p = S.posts.find(x => x.id === id); 
   if (!p) return;
   // FIX 2: garantía extra de que sea array antes de modificar
@@ -334,6 +336,7 @@ async function tsave(id) {
 
 // --- COLECCIÓN (persiste en Supabase) ---
 async function tocol(id) {
+  id = isNaN(id) ? id : Number(id);
   const p = S.posts.find(x => x.id === id);
   if (!p) return;
   p.col = !p.col;
@@ -349,6 +352,7 @@ async function tocol(id) {
 
 // --- ELIMINAR (persiste en Supabase) ---
 async function dpost(id) {
+  id = isNaN(id) ? id : Number(id);
   const { error } = await db.from('posts').delete().eq('id', id);
   if (error) {
     toast('Error al eliminar');
@@ -361,9 +365,10 @@ async function dpost(id) {
 }
 
 // --- COMENTARIOS (persiste en Supabase) ---
-function tcmt(id) { S.coOpen[id] = !S.coOpen[id]; render(); }
+function tcmt(id) { id = isNaN(id) ? id : Number(id); S.coOpen[id] = !S.coOpen[id]; render(); }
 
 async function scmt(id) {
+  id = isNaN(id) ? id : Number(id);
   // FIX 1: usamos safeId() para buscar el input en el DOM
   const inp = document.getElementById(safeId(id));
   if (!inp) return;
