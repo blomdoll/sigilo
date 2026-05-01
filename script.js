@@ -948,16 +948,17 @@ async function havatar(e) {
   const ext=f.name.split('.').pop(), path=`${S.me.id}.${ext}`;
   const {error:upErr}=await db.storage.from('avatars').upload(path,f,{upsert:true,contentType:f.type});
   if(upErr){toast('Error al subir imagen');return;}
-  // Cache-buster para forzar recarga aunque la URL base sea la misma
+  // URL limpia para guardar en Auth y en la BD
   const {data}=db.storage.from('avatars').getPublicUrl(path);
-  const url=data.publicUrl+'?t='+Date.now();
-  const {error:authErr}=await db.auth.updateUser({data:{avatar_url:url}});
+  const cleanUrl=data.publicUrl;
+  // Cache-buster solo para mostrar en pantalla (no se guarda)
+  const displayUrl=cleanUrl+'?t='+Date.now();
+  const {error:authErr}=await db.auth.updateUser({data:{avatar_url:cleanUrl}});
   if(authErr){toast('Error al guardar avatar');return;}
-  S.me.user_metadata.avatar_url=url;
-  // Actualizar author_av en todos los posts del usuario en la BD
-  await db.from('posts').update({author_av:url}).eq('user_id',S.me.id);
-  // Reflejar el cambio en el estado local inmediatamente
-  S.posts.forEach(p=>{ if(p.user_id===S.me.id) p.author_av=url; });
+  // Guardar URL limpia en Auth y BD, URL con cache-buster solo en estado local para forzar recarga visual
+  S.me.user_metadata.avatar_url=displayUrl;
+  await db.from('posts').update({author_av:cleanUrl}).eq('user_id',S.me.id);
+  S.posts.forEach(p=>{ if(p.user_id===S.me.id) p.author_av=displayUrl; });
   render(); toast('foto actualizada');
 }
 
