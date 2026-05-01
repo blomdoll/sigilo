@@ -190,25 +190,10 @@ async function fetchPosts(reset = true) {
 async function loadMore() {
   const btn = document.querySelector('.load-more-btn');
   if (btn) { btn.textContent = 'cargando...'; btn.disabled = true; }
-  S.page_num++;
-  const from = (S.page_num - 1) * S.PAGE_SIZE;
-  const to = S.page_num * S.PAGE_SIZE - 1;
-  const { data, error } = await db.from('posts').select('*').order('created_at', { ascending: false }).range(from, to);
-  if (!error && data && data.length > 0) {
-    const existingIds = new Set(S.posts.map(p => p.id));
-    const newPosts = data.map(p => ({
-      ...p,
-      likes: Array.isArray(p.likes)?p.likes:[],
-      cmts: Array.isArray(p.cmts)?p.cmts:[],
-      saved: Array.isArray(p.saved)?p.saved:[],
-      t: p.created_at
-    })).filter(p => !existingIds.has(p.id));
-    S.posts = [...S.posts, ...newPosts];
-    render();
-  } else {
-    S.page_num--;
-    toast('ya viste todo lo que hay aqui');
-  }
+  
+  await fetchPosts(false); // Llamamos con reset=false para que sume al offset
+  
+  if (btn) { btn.textContent = 'cargar mas'; btn.disabled = false; }
 }
 
 async function logout() {
