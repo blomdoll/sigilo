@@ -137,6 +137,17 @@ function boot() {
   fetchPosts();
   fetchFolders();
   loadNotifs();
+
+  // Restaurar la pagina donde estaba el usuario antes de refrescar
+  try {
+    const saved = JSON.parse(sessionStorage.getItem('sigilo_nav') || 'null');
+    if (saved && saved.page === 'profile' && saved.puid) {
+      S.page = 'profile';
+      S.puid = saved.puid;
+      S.ptab = saved.ptab || 'posts';
+      nav(); render(); return;
+    }
+  } catch(e) {}
   gofeed();
 }
 
@@ -457,9 +468,13 @@ async function searchUsers() {
 function goSearchUser(id) { toggleSearch(); vprof(id); }
 
 // --- NAVEGACION ---
-function gofeed() { S.page='feed'; S.puid=null; S.menu=null; nav(); render(); }
-function goprofile() { S.page='profile'; S.puid=S.me.id; S.ptab='posts'; S.menu=null; nav(); render(); }
-function vprof(id) { S.page='profile'; S.puid=id; S.ptab='posts'; S.menu=null; nav(); render(); }
+function saveNavState() {
+  try { sessionStorage.setItem('sigilo_nav', JSON.stringify({ page: S.page, puid: S.puid, ptab: S.ptab })); } catch(e) {}
+}
+
+function gofeed() { S.page='feed'; S.puid=null; S.menu=null; saveNavState(); nav(); render(); }
+function goprofile() { S.page='profile'; S.puid=S.me.id; S.ptab='posts'; S.menu=null; saveNavState(); nav(); render(); }
+function vprof(id) { S.page='profile'; S.puid=id; S.ptab='posts'; S.menu=null; saveNavState(); nav(); render(); }
 
 function nav() {
   ['nf','np'].forEach(id => { const el=document.getElementById(id); if(el) el.className='nbtn'; });
@@ -951,23 +966,25 @@ async function havatar(e) {
   if (refreshErr || !refreshData?.session) { toast('Sesión expirada. Vuelve a iniciar sesión.'); return; }
   S.me = refreshData.session.user;
 
-  const ext=f.name.split('.').pop(), path=`${S.me.id}.${ext}`;
+  // Usamos siempre el mismo nombre de archivo (sin extensión variable)
+  // para que la URL sea estable y predecible entre dispositivos
+  const path=`${S.me.id}/avatar`;
   const {error:upErr}=await db.storage.from('avatars').upload(path,f,{upsert:true,contentType:f.type});
   if(upErr){toast('Error al subir imagen');return;}
 
-  // URL limpia para guardar en Auth y BD (sin parámetros extra)
+  // URL limpia sin cache-buster — es lo que se guarda en Auth y BD
   const {data}=db.storage.from('avatars').getPublicUrl(path);
   const cleanUrl=data.publicUrl;
-  // Cache-buster solo para mostrar en pantalla en esta sesión, no se persiste
+  // Cache-buster SOLO para forzar recarga visual en el navegador actual (no se persiste)
   const displayUrl=cleanUrl+'?t='+Date.now();
 
   const {error:authErr}=await db.auth.updateUser({data:{avatar_url:cleanUrl}});
   if(authErr){toast('Error al guardar avatar');return;}
 
-  // Estado local usa displayUrl para forzar recarga visual inmediata
+  // Guardar cleanUrl en Auth y BD; displayUrl solo en memoria local para esta sesión
   S.me.user_metadata.avatar_url=displayUrl;
-  // BD guarda cleanUrl (sin cache-buster) para que otros dispositivos lo lean bien
   await db.from('posts').update({author_av:cleanUrl}).eq('user_id',S.me.id);
+  // Actualizar posts locales con displayUrl para que el cambio sea visible de inmediato
   S.posts.forEach(p=>{ if(p.user_id===S.me.id) p.author_av=displayUrl; });
   render(); toast('foto actualizada');
 }
