@@ -197,6 +197,7 @@ async function loadMore() {
 }
 
 async function logout() {
+  unsubscribeNotifs();
   await db.auth.signOut();
   S.me = null; S.notifs = []; S.notifOpen = false;
   document.getElementById('app').style.display = 'none';
@@ -205,17 +206,76 @@ async function logout() {
   stab('login');
 }
 
-// --- NOTIFICACIONES (localStorage por dispositivo) ---
-function notifKey() { return 'sigilo_notifs_' + S.me?.id; }
+// --- NOTIFICACIONES (Supabase Realtime) ---
+// Requiere tabla en Supabase:
+// notifications(id uuid pk default gen_random_uuid(), to_uid text, from_uid text,
+//   from_name text, type text, post_id text, post_body text,
+//   read bool default false, created_at timestamptz default now())
+// RLS: SELECT where to_uid = auth.uid()
 
-function loadNotifs() {
-  try { S.notifs = JSON.parse(localStorage.getItem(notifKey()) || '[]'); }
-  catch(e) { S.notifs = []; }
+let _notifChannel = null;
+
+async function loadNotifs() {
+  if (!S.me) return;
+  try {
+    const { data } = await db.from('notifications')
+      .select('*')
+      .eq('to_uid', S.me.id)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    S.notifs = (data || []).map(n => ({
+      id: n.id,
+      type: n.type,
+      fromUid: n.from_uid,
+      fromName: n.from_name,
+      postId: n.post_id,
+      postBody: n.post_body,
+      ts: n.created_at,
+      read: n.read,
+    }));
+  } catch(e) { S.notifs = []; }
   renderNotifBadge();
+  subscribeNotifs();
 }
 
-function saveNotifs() {
-  try { localStorage.setItem(notifKey(), JSON.stringify(S.notifs.slice(0, 50))); } catch(e) {}
+function subscribeNotifs() {
+  if (_notifChannel) return;
+  _notifChannel = db.channel('notifs_' + S.me.id)
+    .on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'notifications',
+      filter: `to_uid=eq.${S.me.id}`,
+    }, payload => {
+      const n = payload.new;
+      S.notifs.unshift({
+        id: n.id, type: n.type,
+        fromUid: n.from_uid, fromName: n.from_name,
+        postId: n.post_id, postBody: n.post_body,
+        ts: n.created_at, read: false,
+      });
+      renderNotifBadge();
+      if (S.notifOpen) renderNotifPanel();
+    })
+    .subscribe();
+}
+
+function unsubscribeNotifs() {
+  if (_notifChannel) { db.removeChannel(_notifChannel); _notifChannel = null; }
+}
+
+async function saveNotif(toUid, type, fromName, postId, postBody) {
+  try {
+    await db.from('notifications').insert([{
+      to_uid: toUid,
+      from_uid: S.me.id,
+      from_name: fromName,
+      type,
+      post_id: String(postId),
+      post_body: (postBody || '').slice(0, 120),
+      read: false,
+    }]);
+  } catch(e) {}
 }
 
 function renderNotifBadge() {
@@ -229,9 +289,13 @@ function renderNotifBadge() {
 function toggleNotif() {
   S.notifOpen = !S.notifOpen;
   if (S.notifOpen) {
+    const unreadIds = S.notifs.filter(n => !n.read).map(n => n.id);
     S.notifs.forEach(n => n.read = true);
-    saveNotifs();
     renderNotifBadge();
+    // Marcar como leídas en Supabase (sin await para no bloquear UI)
+    if (unreadIds.length > 0) {
+      db.from('notifications').update({ read: true }).in('id', unreadIds).then(() => {});
+    }
   }
   renderNotifPanel();
 }
@@ -261,7 +325,10 @@ function renderNotifPanel() {
   </div>`;
 }
 
-function clearNotifs() { S.notifs=[]; saveNotifs(); renderNotifBadge(); renderNotifPanel(); }
+function clearNotifs() {
+  db.from('notifications').delete().eq('to_uid', S.me.id).then(() => {});
+  S.notifs=[]; renderNotifBadge(); renderNotifPanel();
+}
 
 function goNotif(postId) {
   S.notifOpen = false; renderNotifPanel();
@@ -778,13 +845,8 @@ async function tlike(id) {
   if(error) toast('Error al dar like');
   else {
     if (!wasLiked && p.user_id !== S.me.id) {
-      try {
-        const myName = S.me.user_metadata?.display_name||S.me.email;
-        const key = 'sigilo_notifs_'+p.user_id;
-        const existing = JSON.parse(localStorage.getItem(key)||'[]');
-        existing.unshift({ id:uid(), type:'like', fromUid:S.me.id, fromName:myName, postId:id, postBody:p.body, ts:Date.now(), read:false });
-        localStorage.setItem(key, JSON.stringify(existing.slice(0,50)));
-      } catch(e) {}
+      const myName = S.me.user_metadata?.display_name||S.me.email;
+      saveNotif(p.user_id, 'like', myName, id, p.body);
     }
     render();
   }
@@ -850,7 +912,11 @@ async function scmt(id) {
     toast('Error al comentar');
   } else {
     inp.value = '';
-    // Lógica de notificación...
+    // Notificar al dueño del post si no es el mismo usuario
+    if (p.user_id !== S.me.id) {
+      const myName = S.me.user_metadata?.display_name||S.me.email;
+      saveNotif(p.user_id, 'comment', myName, id, p.body);
+    }
     render();
   }
 }
@@ -882,11 +948,17 @@ async function havatar(e) {
   const ext=f.name.split('.').pop(), path=`${S.me.id}.${ext}`;
   const {error:upErr}=await db.storage.from('avatars').upload(path,f,{upsert:true,contentType:f.type});
   if(upErr){toast('Error al subir imagen');return;}
+  // Cache-buster para forzar recarga aunque la URL base sea la misma
   const {data}=db.storage.from('avatars').getPublicUrl(path);
-  const url=data.publicUrl;
+  const url=data.publicUrl+'?t='+Date.now();
   const {error:authErr}=await db.auth.updateUser({data:{avatar_url:url}});
   if(authErr){toast('Error al guardar avatar');return;}
-  S.me.user_metadata.avatar_url=url; render(); toast('foto actualizada');
+  S.me.user_metadata.avatar_url=url;
+  // Actualizar author_av en todos los posts del usuario en la BD
+  await db.from('posts').update({author_av:url}).eq('user_id',S.me.id);
+  // Reflejar el cambio en el estado local inmediatamente
+  S.posts.forEach(p=>{ if(p.user_id===S.me.id) p.author_av=url; });
+  render(); toast('foto actualizada');
 }
 
 function openmod(){S.modal=true;render();}
