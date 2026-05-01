@@ -45,8 +45,16 @@
       <nav class="hnav">
         <button class="nbtn" id="nf" onclick="gofeed()">inicio</button>
         <button class="nbtn" id="np" onclick="goprofile()">perfil</button>
+        <button class="nlog" id="ns" onclick="toggleSearch()" title="Buscar usuarios">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </button>
         <button class="nlog" onclick="logout()" title="Salir">⇥</button>
       </nav>
+      <!-- Search overlay -->
+      <div id="searchOverlay" style="display:none">
+        <input id="searchInput" class="searchInput" placeholder="buscar usuarios..." oninput="searchUsers()" autocomplete="off"/>
+        <div id="searchResults" class="searchResults"></div>
+      </div>
     </header>
     <main id="mc"></main>
     <footer>Creado por <b>Sage Aksnes / @blomdoll</b></footer>
