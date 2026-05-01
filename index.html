@@ -39,50 +39,11 @@
   </div>
 
   <!-- Pantalla principal de la aplicación -->
-  <div id="app">
-    <!-- Dentro de <div id="app"> -->
-<div class="layout-container">
-  <!-- Columna Izquierda (Escritorio) -->
-  <aside class="sidebar left">
-    <div class="sticky-side">
-      <button class="side-link on" onclick="gofeed()">✦ Inicio</button>
-      <button class="side-link" onclick="goprofile()">✦ Perfil</button>
-      <button class="side-link" onclick="stptab('saved')">✦ Guardados</button>
-    </div>
-  </aside>
-
-  <main id="mc"></main>
-
-  <!-- Columna Derecha (Escritorio) -->
-  <aside class="sidebar right">
-    <div class="sticky-side">
-      <div class="side-card">
-        <h3>Explorar</h3>
-        <p>Busca nuevas inspiraciones en texto.</p>
-        <button class="btn-fill" onclick="toggleSearch()" style="margin-top: 10px; font-size: 0.8rem;">Buscar</button>
-      </div>
-    </div>
-  </aside>
-</div>
-
-<!-- Menú Inferior (Móvil) -->
-<nav class="mobile-nav">
-  <button class="m-nav-btn" onclick="gofeed()" title="Inicio">
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-  </button>
-  <button class="m-nav-btn" onclick="toggleSearch()" title="Buscar">
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-  </button>
-  <button class="m-nav-btn" onclick="stptab('saved')" title="Guardados">
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
-  </button>
-  <button class="m-nav-btn" onclick="goprofile()" title="Perfil">
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-  </button>
-</nav>
+  <div id="app" style="display:none">
     <header>
       <div class="hlogo" onclick="gofeed()">✦ sigilo</div>
       <nav class="hnav">
+        <!-- Estos botones se ocultan en móvil por CSS -->
         <button class="nbtn" id="nf" onclick="gofeed()">inicio</button>
         <button class="nbtn" id="np" onclick="goprofile()">perfil</button>
         <button class="nlog" id="ns" onclick="toggleSearch()" title="Buscar usuarios">
@@ -103,9 +64,50 @@
         <div id="searchResults" class="searchResults"></div>
       </div>
     </header>
-    <main id="mc"></main>
+
+    <div class="layout-container">
+      <!-- Columna Izquierda (Escritorio) -->
+      <aside class="sidebar left">
+        <div class="sticky-side">
+          <button class="side-link on" onclick="gofeed()">✦ Inicio</button>
+          <button class="side-link" onclick="goprofile()">✦ Perfil</button>
+          <button class="side-link" onclick="stptab('saved')">✦ Guardados</button>
+        </div>
+      </aside>
+
+      <!-- El ÚNICO main que debe existir -->
+      <main id="mc"></main>
+
+      <!-- Columna Derecha (Escritorio) -->
+      <aside class="sidebar right">
+        <div class="sticky-side">
+          <div class="side-card">
+            <h3>Explorar</h3>
+            <p>Busca nuevas inspiraciones en texto.</p>
+            <button class="btn-fill" onclick="toggleSearch()" style="margin-top: 10px; font-size: 0.8rem;">Buscar</button>
+          </div>
+        </div>
+      </aside>
+    </div>
+
     <footer>Creado por <b>Sage Aksnes / @blomdoll</b></footer>
   </div>
+
+  <!-- Menú Inferior (Móvil) - Fuera de layout-container para evitar conflictos -->
+  <nav class="mobile-nav">
+    <button class="m-nav-btn" onclick="gofeed()" title="Inicio">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    </button>
+    <button class="m-nav-btn" onclick="toggleSearch()" title="Buscar">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </button>
+    <button class="m-nav-btn" onclick="stptab('saved')" title="Guardados">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+    </button>
+    <button class="m-nav-btn" onclick="goprofile()" title="Perfil">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+    </button>
+  </nav>
 
   <!-- Notificación toast -->
   <div class="toast" id="toast"></div>
