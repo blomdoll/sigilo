@@ -537,6 +537,33 @@ header { position: relative; }
     display: none !important;
   }
 
+  /* ---- Botón salir en perfil (solo móvil) ---- */
+  .ppage {
+    padding-top: 2.8rem; /* espacio para el botón salir arriba */
+  }
+  .mob-logout-btn {
+    position: absolute;
+    top: 0;
+    right: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: .38rem;
+    padding: .42rem .85rem;
+    border-radius: var(--r2);
+    border: 1.5px solid var(--bd);
+    background: var(--surface);
+    color: var(--tx3);
+    font-size: .78rem;
+    font-family: var(--fb);
+    cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s;
+  }
+  .mob-logout-btn:hover {
+    background: var(--s2);
+    color: var(--tx2);
+    border-color: var(--tx3);
+  }
+
   /* Padding inferior para que el contenido no quede tapado */
   #app {
     padding-bottom: 64px;
