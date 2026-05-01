@@ -152,13 +152,14 @@ function boot() {
 }
 
 async function fetchPosts(reset = true) {
-  const feedContainer = document.getElementById('posts-container'); 
-  // Nota: Asegúrate de que en tu HTML el contenedor de posts tenga id="posts-container" o cámbialo aquí al id que uses.
+  const feedContainer = document.getElementById('posts-container');
 
   if (reset) {
     S.page_num = 1;
     offset = 0;
-    if (feedContainer) feedContainer.innerHTML = ''; 
+    if (feedContainer) feedContainer.innerHTML = '';
+    // Mostrar skeletons solo en la carga inicial del feed
+    if (S.page === 'feed') showSkeletons(4);
   }
 
   const desde = offset;
@@ -472,7 +473,7 @@ function saveNavState() {
   try { sessionStorage.setItem('sigilo_nav', JSON.stringify({ page: S.page, puid: S.puid, ptab: S.ptab })); } catch(e) {}
 }
 
-function gofeed() { S.page='feed'; S.puid=null; S.menu=null; saveNavState(); nav(); render(); }
+function gofeed() { S.page='feed'; S.puid=null; S.menu=null; saveNavState(); nav(); render(); setTimeout(attachInfiniteScroll, 200); }
 function goprofile() { S.page='profile'; S.puid=S.me.id; S.ptab='posts'; S.menu=null; saveNavState(); nav(); render(); }
 function vprof(id) { S.page='profile'; S.puid=id; S.ptab='posts'; S.menu=null; saveNavState(); nav(); render(); }
 
@@ -640,9 +641,12 @@ function rfeed() {
   <div class="fsub">comparte decoraciones, letras, simbolos y mas</div>
   <div class="ccard">
     <div class="ctop">${avEl(S.me)}<textarea class="ctxt" id="ct" placeholder="comparte algo bonito..." maxlength="${MAX_CHARS}"></textarea></div>
-    <div class="cbot">
-      <select class="csel" id="cc">${CATS.slice(1).map(c=>`<option>${c}</option>`).join('')}</select>
-      <div style="display:flex;align-items:center;gap:.5rem">
+    <div class="cat-pills" id="cat-pills-compose">
+      ${CATS.slice(1).map((c,i)=>`<button class="cpill${i===0?' on':''}" onclick="selectComposeCat('${c}',this)">${c}</button>`).join('')}
+    </div>
+    <input type="hidden" id="cc" value="${CATS[1]}"/>
+    <div class="cbot" style="border-top:none;padding-top:.45rem">
+      <div style="display:flex;align-items:center;gap:.5rem;margin-left:auto">
         <span id="char-count" class="char-count">${MAX_CHARS}</span>
         <button class="pbtn" onclick="post()">publicar</button>
       </div>
@@ -651,7 +655,7 @@ function rfeed() {
   <div class="cats">${CATS.map(c=>`<button class="catb${S.cat===c?' on':''}" onclick="setcat('${c}')">${c}</button>`).join('')}</div>
   ${posts.length===0
     ? `<div class="empty"><div class="ei">🌸</div><div class="el">aun no hay publicaciones aqui</div></div>`
-    : posts.map(rpost).join('') + `<div style="text-align:center;margin:1.5rem 0"><button class="load-more-btn" onclick="loadMore()">cargar mas</button></div>`
+    : posts.map(rpost).join('')
   }`;
 }
 
@@ -1035,11 +1039,11 @@ db.auth.refreshSession().then(({data, error})=>{
 // ======== MOBILE BOTTOM NAV ========
 
 function mobSetActive(tab) {
-  ['mob-home','mob-search','mob-saved','mob-profile'].forEach(id => {
+  ['mob-home','mob-search','mob-notif','mob-profile'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.remove('active');
   });
-  const map = { home:'mob-home', search:'mob-search', saved:'mob-saved', profile:'mob-profile' };
+  const map = { home:'mob-home', search:'mob-search', notif:'mob-notif', profile:'mob-profile' };
   const el = document.getElementById(map[tab]);
   if (el) el.classList.add('active');
 }
@@ -1150,6 +1154,171 @@ document.addEventListener('click', e => {
     }
   }
 });
+
+
+// ======== MODO OSCURO ========
+function initTheme() {
+  const saved = localStorage.getItem('sigilo_theme');
+  if (saved === 'dark') { document.documentElement.classList.add('dark'); }
+  else if (saved === 'light') { document.documentElement.classList.add('light'); }
+  updateThemeIcon();
+}
+
+function toggleTheme() {
+  const root = document.documentElement;
+  const isDark = root.classList.contains('dark') ||
+    (!root.classList.contains('light') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  if (isDark) {
+    root.classList.remove('dark'); root.classList.add('light');
+    localStorage.setItem('sigilo_theme','light');
+  } else {
+    root.classList.remove('light'); root.classList.add('dark');
+    localStorage.setItem('sigilo_theme','dark');
+  }
+  updateThemeIcon();
+}
+
+function updateThemeIcon() {
+  const root = document.documentElement;
+  const isDark = root.classList.contains('dark') ||
+    (!root.classList.contains('light') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const icon = document.getElementById('theme-icon');
+  if (!icon) return;
+  if (isDark) {
+    icon.innerHTML = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+  } else {
+    icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+  }
+}
+
+window.toggleTheme = toggleTheme;
+initTheme();
+
+// ======== SKELETON LOADER ========
+function showSkeletons(count = 4) {
+  const mc = document.getElementById('mc');
+  if (!mc) return;
+  const sk = () => `
+  <div class="skeleton-card">
+    <div class="sk-head">
+      <div class="sk-av"></div>
+      <div class="sk-meta">
+        <div class="sk-line" style="width:38%"></div>
+        <div class="sk-line" style="width:22%;margin-bottom:0"></div>
+      </div>
+    </div>
+    <div class="sk-line" style="width:95%"></div>
+    <div class="sk-line" style="width:80%"></div>
+    <div class="sk-line" style="width:60%;margin-bottom:0"></div>
+  </div>`;
+  mc.innerHTML = Array(count).fill(0).map(sk).join('');
+}
+
+// ======== INFINITE SCROLL ========
+let _infScrollBusy = false;
+let _infScrollDone = false;
+
+function attachInfiniteScroll() {
+  window.removeEventListener('scroll', _onScroll);
+  _infScrollDone = false;
+  window.addEventListener('scroll', _onScroll, { passive: true });
+}
+
+function detachInfiniteScroll() {
+  window.removeEventListener('scroll', _onScroll);
+}
+
+async function _onScroll() {
+  if (_infScrollBusy || _infScrollDone || S.page !== 'feed') return;
+  const nearBottom = document.documentElement.scrollHeight - window.scrollY - window.innerHeight < 300;
+  if (!nearBottom) return;
+  _infScrollBusy = true;
+  // Mostrar spinner
+  let spinner = document.getElementById('inf-spin');
+  if (!spinner) {
+    spinner = document.createElement('div');
+    spinner.id = 'inf-spin';
+    spinner.className = 'inf-spinner';
+    spinner.innerHTML = '<span></span><span></span><span></span>';
+    document.getElementById('mc')?.appendChild(spinner);
+  }
+  const prevLen = S.posts.length;
+  await fetchPosts(false);
+  if (S.posts.length === prevLen) { _infScrollDone = true; }
+  spinner.remove();
+  _infScrollBusy = false;
+}
+
+// ======== FAB & COMPOSE BOTTOM-SHEET (MÓVIL) ========
+let _composeOpen = false;
+
+function toggleCompose() {
+  _composeOpen = !_composeOpen;
+  const cc = document.querySelector('.ccard');
+  const ov = document.getElementById('composeOverlay');
+  const fab = document.getElementById('fab');
+  if (!cc) return;
+  if (_composeOpen) {
+    cc.classList.add('compose-open');
+    if (ov) ov.classList.add('open');
+    if (fab) fab.style.display = 'none';
+    setTimeout(() => cc.querySelector('textarea')?.focus(), 80);
+  } else {
+    cc.classList.remove('compose-open');
+    if (ov) ov.classList.remove('open');
+    if (fab) fab.style.display = '';
+  }
+}
+
+// Cerrar compose al publicar exitosamente
+const _origPost = post;
+window.post = async function() {
+  await _origPost();
+  if (_composeOpen) toggleCompose();
+};
+
+window.toggleCompose = toggleCompose;
+
+// ======== BADGE NOTIF EN MOB-NAV ========
+const _origRenderBadge = renderNotifBadge;
+window.renderNotifBadge = function() {
+  _origRenderBadge();
+  const mobBadge = document.getElementById('mob-notif-badge');
+  if (!mobBadge) return;
+  const count = S.notifs.filter(n => !n.read).length;
+  mobBadge.textContent = count > 9 ? '9+' : (count || '');
+  mobBadge.style.display = count > 0 ? 'flex' : 'none';
+};
+renderNotifBadge = window.renderNotifBadge;
+
+// ======== LIKE ANIMATION PATCH ========
+const _origTlike = tlike;
+window.tlike = async function(id) {
+  await _origTlike(id);
+  // Re-trigger animation (CSS no re-dispara si la clase ya existe)
+  setTimeout(() => {
+    const numId = isNaN(id) ? id : Number(id);
+    const p = S.posts.find(x => x.id === numId);
+    if (!p) return;
+    const cid = safeId(numId);
+    const btn = document.querySelector(`#post-${cid} .abtn.liked`);
+    if (btn) {
+      btn.classList.remove('like-anim');
+      void btn.offsetWidth; // force reflow
+      btn.classList.add('like-anim');
+      btn.addEventListener('animationend', () => btn.classList.remove('like-anim'), { once: true });
+    }
+  }, 30);
+};
+tlike = window.tlike;
+
+// ======== PILLS DE CATEGORÍA EN COMPOSE ========
+function selectComposeCat(cat, el) {
+  document.getElementById('cc').value = cat;
+  document.querySelectorAll('#cat-pills-compose .cpill').forEach(b => b.classList.remove('on'));
+  if (el) el.classList.add('on');
+}
+window.selectComposeCat = selectComposeCat;
 
 // Exponer funciones móviles
 window.mobToggleSearch = mobToggleSearch;
