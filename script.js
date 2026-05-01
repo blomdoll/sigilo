@@ -901,6 +901,14 @@ async function savemod() {
   else { S.me.user_metadata.display_name=n; S.me.user_metadata.bio=b; S.modal=false; render(); toast('perfil actualizado'); }
 }
 
+function goSaved() {
+  S.page = 'profile';
+  S.puid = S.me.id;
+  S.ptab = 'saved'; 
+  S.menu = null;
+  render();
+}
+
 // --- EXPOSE ---
 window.tlike=tlike; window.tsave=tsave; window.tcmt=tcmt; window.scmt=scmt; window.dcmt=dcmt;
 window.tocol=tocol; window.dpost=dpost; window.tmenu=tmenu; window.vprof=vprof;
@@ -917,7 +925,7 @@ window.toggleSearch=toggleSearch; window.searchUsers=searchUsers; window.goSearc
 window.havatar=havatar; window.copyPost=copyPost;
 window.openEditPost=openEditPost; window.closeEditPost=closeEditPost; window.saveEditPost=saveEditPost;
 window.toggleNotif=toggleNotif; window.goNotif=goNotif; window.clearNotifs=clearNotifs;
-window.confirmAction=confirmAction; window.renderConfirmModal=renderConfirmModal;
+window.confirmAction=confirmAction; window.renderConfirmModal=renderConfirmModal; window.goSaved = goSaved;
 
 showLoading();
 db.auth.getSession().then(({data:{session}})=>{
