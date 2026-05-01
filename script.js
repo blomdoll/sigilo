@@ -656,7 +656,10 @@ function rprofile() {
   const userFolders = S.folders.filter(f => f.user_id === S.puid);
 
   return `
-  <div class="ppage">
+  <div class="ppage" style="position:relative">
+    <!-- BOTÓN SALIR (Solo visible en móvil por CSS) -->
+    ${own ? `<button class="mobile-logout-btn" onclick="logout()">salir</button>` : ''}
+
     <div class="pavwrap">
       <div class="pav" ${own ? 'onclick="upavatar()"' : ''} style="${own ? 'cursor:pointer' : 'cursor:default'}">
         <!-- Pasamos 'own' como tercer argumento para que el mensaje no salga en perfiles ajenos -->
