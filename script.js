@@ -34,13 +34,20 @@ const uid = () => 'x' + Math.random().toString(36).slice(2);
 
 const ago = ts => {
   if (!ts) return '';
-  const d = Date.now() - new Date(ts).getTime();
-  if (isNaN(d)) return '';
-  if (d < 60000) return 'ahora';
-  if (d < 3600000) return ~~(d / 60000) + 'm';
-  if (d < 86400000) return ~~(d / 3600000) + 'h';
-  if (d < 2592000000) return ~~(d / 86400000) + 'd';
-  return new Date(ts).toLocaleDateString('es', { day:'numeric', month:'short' });
+  const diff = Date.now() - new Date(ts).getTime();
+  // Si la fecha no es válida, no devolvemos nada
+  if (isNaN(diff)) return '';
+  // Si el post parece ser del futuro (negativo) o tiene menos de un minuto
+  if (diff < 60000) return 'ahora';
+  // Calculamos las unidades usando Math.floor para mayor claridad
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return mins + 'm';
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return hours + 'h';
+  const days = Math.floor(hours / 24);
+  if (days < 30) return days + 'd';
+  // Para publicaciones de más de un mes, mostramos la fecha exacta
+  return new Date(ts).toLocaleDateString('es', { day: 'numeric', month: 'short' });
 };
 
 const esc = s => s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
