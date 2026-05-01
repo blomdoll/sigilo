@@ -945,18 +945,28 @@ function upavatar() { document.getElementById('avup').click(); }
 async function havatar(e) {
   const f=e.target.files[0]; if(!f) return;
   toast('subiendo foto...');
+
+  // Refrescar sesión antes de updateUser para evitar 403 Forbidden
+  const { data: refreshData, error: refreshErr } = await db.auth.refreshSession();
+  if (refreshErr || !refreshData?.session) { toast('Sesión expirada. Vuelve a iniciar sesión.'); return; }
+  S.me = refreshData.session.user;
+
   const ext=f.name.split('.').pop(), path=`${S.me.id}.${ext}`;
   const {error:upErr}=await db.storage.from('avatars').upload(path,f,{upsert:true,contentType:f.type});
   if(upErr){toast('Error al subir imagen');return;}
-  // URL limpia para guardar en Auth y en la BD
+
+  // URL limpia para guardar en Auth y BD (sin parámetros extra)
   const {data}=db.storage.from('avatars').getPublicUrl(path);
   const cleanUrl=data.publicUrl;
-  // Cache-buster solo para mostrar en pantalla (no se guarda)
+  // Cache-buster solo para mostrar en pantalla en esta sesión, no se persiste
   const displayUrl=cleanUrl+'?t='+Date.now();
+
   const {error:authErr}=await db.auth.updateUser({data:{avatar_url:cleanUrl}});
   if(authErr){toast('Error al guardar avatar');return;}
-  // Guardar URL limpia en Auth y BD, URL con cache-buster solo en estado local para forzar recarga visual
+
+  // Estado local usa displayUrl para forzar recarga visual inmediata
   S.me.user_metadata.avatar_url=displayUrl;
+  // BD guarda cleanUrl (sin cache-buster) para que otros dispositivos lo lean bien
   await db.from('posts').update({author_av:cleanUrl}).eq('user_id',S.me.id);
   S.posts.forEach(p=>{ if(p.user_id===S.me.id) p.author_av=displayUrl; });
   render(); toast('foto actualizada');
@@ -993,9 +1003,16 @@ window.toggleNotif=toggleNotif; window.goNotif=goNotif; window.clearNotifs=clear
 window.confirmAction=confirmAction; window.renderConfirmModal=renderConfirmModal;
 
 showLoading();
-db.auth.getSession().then(({data:{session}})=>{
-  if(session){ S.me=session.user; boot(); }
-  else { hideLoading(); document.getElementById('auth').style.display='flex'; }
+// Usar refreshSession en lugar de getSession para garantizar token válido y metadatos frescos
+db.auth.refreshSession().then(({data, error})=>{
+  if(data?.session){ S.me=data.session.user; boot(); }
+  else {
+    // Si no hay sesión activa, caer a getSession como fallback
+    db.auth.getSession().then(({data:{session}})=>{
+      if(session){ S.me=session.user; boot(); }
+      else { hideLoading(); document.getElementById('auth').style.display='flex'; }
+    });
+  }
 });
 
 // ======== MOBILE BOTTOM NAV ========
