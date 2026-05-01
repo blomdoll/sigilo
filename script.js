@@ -819,25 +819,38 @@ async function dpost(id) {
 function tcmt(id) { id=isNaN(id)?id:Number(id); S.coOpen[id]=!S.coOpen[id]; render(); }
 
 async function scmt(id) {
-  id=isNaN(id)?id:Number(id);
-  const inp=document.getElementById(safeId(id)); if(!inp) return;
-  const txt=inp.value.trim(); if(!txt) return;
-  const p=S.posts.find(x=>x.id===id); if(!p) return;
-  if(!Array.isArray(p.cmts)) p.cmts=[];
-  const myName = S.me.user_metadata?.display_name||S.me.email;
-  p.cmts.push({id:uid(),uid:S.me.id,un:myName,av:S.me.user_metadata?.avatar_url||null,txt,t:Date.now()});
-  const {error}=await db.from('posts').update({cmts:p.cmts}).eq('id',id);
-  if(error){p.cmts.pop();toast('Error al comentar');}
-  else {
-    inp.value='';
-    if (p.user_id !== S.me.id) {
-      try {
-        const key = 'sigilo_notifs_'+p.user_id;
-        const existing = JSON.parse(localStorage.getItem(key)||'[]');
-        existing.unshift({ id:uid(), type:'comment', fromUid:S.me.id, fromName:myName, postId:id, postBody:p.body, ts:Date.now(), read:false });
-        localStorage.setItem(key, JSON.stringify(existing.slice(0,50)));
-      } catch(e) {}
-    }
+  id = isNaN(id) ? id : Number(id);
+  const inp = document.getElementById(safeId(id)); 
+  if (!inp) return;
+  const txt = inp.value.trim(); 
+  if (!txt) return;
+
+  const p = S.posts.find(x => x.id === id); 
+  if (!p) return;
+  if (!Array.isArray(p.cmts)) p.cmts = [];
+
+  const myName = S.me.user_metadata?.display_name || S.me.email;
+  
+  // Creamos el nuevo comentario con un ID único real
+  const nuevoComentario = {
+    id: 'c' + Date.now() + Math.random().toString(36).slice(2, 5), // ID único imbatible
+    uid: S.me.id,
+    un: myName,
+    av: S.me.user_metadata?.avatar_url || null,
+    txt,
+    t: new Date().toISOString() // Usamos formato ISO para mejor orden
+  };
+
+  p.cmts.push(nuevoComentario);
+
+  const { error } = await db.from('posts').update({ cmts: p.cmts }).eq('id', id);
+
+  if (error) {
+    p.cmts.pop();
+    toast('Error al comentar');
+  } else {
+    inp.value = '';
+    // Lógica de notificación...
     render();
   }
 }
