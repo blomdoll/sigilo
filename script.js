@@ -656,10 +656,7 @@ function rprofile() {
   const userFolders = S.folders.filter(f => f.user_id === S.puid);
 
   return `
-  <div class="ppage" style="position:relative">
-    <!-- BOTÓN SALIR (Solo visible en móvil por CSS) -->
-    ${own ? `<button class="mobile-logout-btn" onclick="logout()">salir</button>` : ''}
-
+  <div class="ppage">
     <div class="pavwrap">
       <div class="pav" ${own ? 'onclick="upavatar()"' : ''} style="${own ? 'cursor:pointer' : 'cursor:default'}">
         <!-- Pasamos 'own' como tercer argumento para que el mensaje no salga en perfiles ajenos -->
@@ -904,14 +901,6 @@ async function savemod() {
   else { S.me.user_metadata.display_name=n; S.me.user_metadata.bio=b; S.modal=false; render(); toast('perfil actualizado'); }
 }
 
-function goSaved() {
-  S.page = 'profile';
-  S.puid = S.me.id;
-  S.ptab = 'saved'; 
-  S.menu = null;
-  render();
-}
-
 // --- EXPOSE ---
 window.tlike=tlike; window.tsave=tsave; window.tcmt=tcmt; window.scmt=scmt; window.dcmt=dcmt;
 window.tocol=tocol; window.dpost=dpost; window.tmenu=tmenu; window.vprof=vprof;
@@ -928,7 +917,7 @@ window.toggleSearch=toggleSearch; window.searchUsers=searchUsers; window.goSearc
 window.havatar=havatar; window.copyPost=copyPost;
 window.openEditPost=openEditPost; window.closeEditPost=closeEditPost; window.saveEditPost=saveEditPost;
 window.toggleNotif=toggleNotif; window.goNotif=goNotif; window.clearNotifs=clearNotifs;
-window.confirmAction=confirmAction; window.renderConfirmModal=renderConfirmModal; window.goSaved = goSaved;
+window.confirmAction=confirmAction; window.renderConfirmModal=renderConfirmModal;
 
 showLoading();
 db.auth.getSession().then(({data:{session}})=>{
