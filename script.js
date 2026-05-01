@@ -622,7 +622,7 @@ function rpost(p) {
           <div class="cma">
             <span>${esc(c.un)}</span>
             <span class="cmt-time">${ago(c.t)}</span>
-          ${c.uid === S.me.id ? `<button class="cmt-del" onclick="dcmt('${p.id}', '${c.id}')" title="eliminar comentario">✕</button>` : ''}
+      ${c.uid === S.me.id ? `<button class="cmt-del" onclick="dcmt('${p.id}', '${c.id}')" title="eliminar comentario">✕</button>` : ''}
           </div>
           <div class="cmt">${esc(c.txt)}</div>
         </div>
