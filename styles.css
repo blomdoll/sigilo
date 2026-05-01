@@ -410,6 +410,77 @@ header { position: relative; }
   padding-left: .2rem;
 }
 
+/* ---- SKELETON LOADING ---- */
+.skeleton-card {
+  background:var(--surface);border:1px solid var(--bd);border-radius:var(--r);
+  padding:1.15rem;margin-bottom:.9rem;
+}
+.sk-line {
+  height:12px;border-radius:6px;background:linear-gradient(90deg,var(--bd) 25%,var(--w4) 50%,var(--bd) 75%);
+  background-size:200% 100%;animation:shimmer 1.4s infinite;
+}
+.sk-avatar { width:36px;height:36px;border-radius:50%;flex-shrink:0; }
+.sk-head { display:flex;gap:.7rem;align-items:center;margin-bottom:.85rem; }
+.sk-meta { flex:1;display:flex;flex-direction:column;gap:.4rem; }
+.sk-line.short { width:38%; }
+.sk-line.tiny  { width:22%;height:9px; }
+.sk-line.full  { width:100%;margin-bottom:.5rem; }
+.sk-line.med   { width:72%; }
+@keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+/* ---- POST FADE-IN ---- */
+@keyframes postIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:none} }
+.pcard { animation: postIn .25s ease both; }
+
+/* ---- SELECTOR DE CATEGORÍA EN COMPOSE (pills) ---- */
+.compose-cats {
+  display:flex;gap:.35rem;flex-wrap:wrap;
+  margin-top:.7rem;padding-top:.7rem;border-top:1px solid var(--bd);
+}
+.compose-catb {
+  padding:.3rem .72rem;border-radius:20px;font-size:.73rem;
+  border:1px solid var(--bd);background:var(--surface);color:var(--tx2);
+  transition:background .15s,color .15s,border-color .15s;
+}
+.compose-catb:hover{background:var(--w4);color:var(--w2);}
+.compose-catb.on{background:var(--w1);color:#fff;border-color:var(--w1);}
+
+/* ---- PCARD hover lift ---- */
+.pcard{
+  transition:border-color .18s, box-shadow .18s;
+}
+.pcard:hover{
+  border-color:var(--w3);
+  box-shadow:0 4px 16px rgba(44,24,16,.07);
+}
+
+/* ---- TEXTAREA EXPAND ON FOCUS ---- */
+.ctxt { transition: min-height .2s ease; }
+.ctxt:focus { min-height: 110px; }
+
+/* ---- EMPTY STATE ---- */
+.empty-friendly { text-align:center;padding:2.5rem 1rem; }
+.empty-friendly .ei { font-size:1.9rem;margin-bottom:.55rem; }
+.empty-friendly .el { font-size:.84rem;color:var(--tx3);line-height:1.6; }
+
+/* ---- PASSWORD TOGGLE ---- */
+.field-pw { position:relative; }
+.field-pw input { padding-right:2.5rem; }
+.pw-toggle {
+  position:absolute;right:.75rem;top:50%;transform:translateY(-50%);
+  background:transparent;color:var(--tx3);font-size:.85rem;
+  width:24px;height:24px;border-radius:4px;
+  display:flex;align-items:center;justify-content:center;
+  transition:color .15s;
+}
+.pw-toggle:hover { color:var(--w1); }
+
+/* ---- INFINITE SCROLL SENTINEL ---- */
+.scroll-sentinel { height:1px;margin-top:1rem; }
+
+/* ---- COPY CONFIRM ---- */
+.copy-done { color:var(--w1) !important; }
+
 /* ---- CARGA ---- */
 .loading-dots { display:flex; gap:.4rem; align-items:center; }
 .loading-dots span {
@@ -540,7 +611,8 @@ header { position: relative; }
     display: none !important;
   }
 
-  /* ---- Botón salir en perfil (solo móvil) ---- */
+  /* Notif bell visible en móvil (dentro del bottom nav se maneja con JS) */
+  .hnav #notif-btn { display: none !important; }
   .ppage {
     padding-top: 2.8rem; /* espacio para el botón salir arriba */
   }
@@ -576,6 +648,9 @@ header { position: relative; }
   .toast {
     bottom: 80px;
   }
+
+  /* Ocultar footer en móvil */
+  footer { display: none; }
 
   /* ---- Bottom nav bar ---- */
   .mob-nav {
