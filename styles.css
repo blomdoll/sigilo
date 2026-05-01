@@ -526,3 +526,92 @@ header { position: relative; }
 .folder-pick-btn.active { background: var(--w4); border-color: var(--w1); color: var(--w2); font-weight: 500; }
 .fp-icon { font-size: 1rem; }
 .fp-check { margin-left: auto; color: var(--w1); font-weight: 700; }
+}
+/* --- Nuevo Layout de 3 Columnas (Escritorio) --- */
+.layout-container {
+  display: grid;
+  grid-template-columns: 240px 1fr 280px; /* 3 columnas */
+  gap: 2rem;
+  max-width: 1200px; /* Ajusta el ancho total */
+  margin: 0 auto;
+  width: 100%;
+  padding: 0 1.25rem;
+}
+
+main {
+  max-width: 100% !important; /* Ahora el contenedor controla el ancho */
+  margin: 0 !important;
+}
+
+.sidebar {
+  display: block;
+}
+
+.sticky-side {
+  position: sticky;
+  top: 5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+/* Estilo para los links laterales */
+.side-link {
+  padding: 0.8rem 1rem;
+  border-radius: var(--r2);
+  font-size: 1rem;
+  color: var(--tx2);
+  justify-content: flex-start !important;
+}
+.side-link:hover, .side-link.on {
+  background: var(--w4);
+  color: var(--w2);
+  font-weight: 500;
+}
+
+.side-card {
+  background: var(--surface);
+  border: 1px solid var(--bd);
+  border-radius: var(--r);
+  padding: 1.25rem;
+}
+
+/* --- Menú Móvil (Inferior) --- */
+.mobile-nav {
+  display: none; /* Oculto por defecto */
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border-top: 1px solid var(--bd);
+  height: 65px;
+  justify-content: space-around;
+  align-items: center;
+  z-index: 100;
+  padding-bottom: env(safe-area-inset-bottom); /* Para iPhones modernos */
+}
+
+.m-nav-btn {
+  color: var(--tx3);
+  padding: 10px;
+}
+.m-nav-btn:active { color: var(--w1); }
+
+/* --- Responsive --- */
+@media (max-width: 1000px) {
+  .layout-container {
+    grid-template-columns: 80px 1fr; /* Oculta columna derecha en pantallas medianas */
+  }
+  .sidebar.right { display: none; }
+}
+
+@media (max-width: 768px) {
+  .layout-container {
+    display: block; /* Una sola columna */
+    padding-bottom: 80px; /* Espacio para que el menú móvil no tape el contenido */
+  }
+  .sidebar.left { display: none; }
+  .mobile-nav { display: flex; } /* Mostramos el menú inferior */
+  header .hnav { display: none; } /* Ocultamos el menú superior para no duplicar */
+}
