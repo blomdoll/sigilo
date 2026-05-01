@@ -29,6 +29,7 @@ const S = {
   page_num: 1,
   PAGE_SIZE: 20,
   confirmModal: null,
+  composeCat: null, // categoría seleccionada en compose (null = primera por defecto)
 };
 
 const CATS = ['todos', 'decoraciones', 'letras', 'simbolos', 'biografias', 'usernames', 'nombres'];
@@ -134,9 +135,6 @@ function boot() {
   document.getElementById('auth').style.display = 'none';
   const app = document.getElementById('app');
   app.style.display = 'flex'; app.style.flexDirection = 'column'; app.style.minHeight = '100%';
-  fetchPosts();
-  fetchFolders();
-  loadNotifs();
 
   // Restaurar la pagina donde estaba el usuario antes de refrescar
   try {
@@ -145,10 +143,29 @@ function boot() {
       S.page = 'profile';
       S.puid = saved.puid;
       S.ptab = saved.ptab || 'posts';
-      nav(); render(); return;
+      nav(); render();
+      fetchPosts();
+      fetchFolders();
+      loadNotifs();
+      return;
     }
   } catch(e) {}
-  gofeed();
+
+  // Mostrar feed con skeletons mientras carga
+  S.page = 'feed';
+  nav();
+  // Renderizar estructura del feed con skeletons
+  const mc = document.getElementById('mc');
+  if (mc) {
+    const sk = `<div class="skeleton-card"><div class="sk-head"><div class="sk-line sk-avatar"></div><div class="sk-meta"><div class="sk-line short"></div><div class="sk-line tiny"></div></div></div><div class="sk-line full"></div><div class="sk-line med"></div></div>`;
+    mc.innerHTML = `
+      <div class="ftitle">inicio</div>
+      <div class="fsub">comparte decoraciones, letras, simbolos y mas</div>
+      ${sk.repeat(4)}`;
+  }
+  fetchPosts();
+  fetchFolders();
+  loadNotifs();
 }
 
 async function fetchPosts(reset = true) {
@@ -195,6 +212,7 @@ async function fetchPosts(reset = true) {
     
     offset += data.length;
     render(); // Esto actualiza la interfaz de "Sigilo"
+    setTimeout(setupInfiniteScroll, 100);
   }
 }
 
@@ -472,9 +490,9 @@ function saveNavState() {
   try { sessionStorage.setItem('sigilo_nav', JSON.stringify({ page: S.page, puid: S.puid, ptab: S.ptab })); } catch(e) {}
 }
 
-function gofeed() { S.page='feed'; S.puid=null; S.menu=null; saveNavState(); nav(); render(); }
-function goprofile() { S.page='profile'; S.puid=S.me.id; S.ptab='posts'; S.menu=null; saveNavState(); nav(); render(); }
-function vprof(id) { S.page='profile'; S.puid=id; S.ptab='posts'; S.menu=null; saveNavState(); nav(); render(); }
+function gofeed() { S.page='feed'; S.puid=null; S.menu=null; saveNavState(); document.title='inicio · sigilo'; nav(); render(); }
+function goprofile() { S.page='profile'; S.puid=S.me.id; S.ptab='posts'; S.menu=null; saveNavState(); document.title='perfil · sigilo'; nav(); render(); }
+function vprof(id) { S.page='profile'; S.puid=id; S.ptab='posts'; S.menu=null; saveNavState(); document.title='perfil · sigilo'; nav(); render(); }
 
 function nav() {
   ['nf','np'].forEach(id => { const el=document.getElementById(id); if(el) el.className='nbtn'; });
@@ -509,12 +527,17 @@ function render() {
   renderConfirmModal();
   renderNotifBadge();
   attachTextareaResize();
+  if (S.page === 'feed') setTimeout(setupInfiniteScroll, 60);
 }
 
 function attachTextareaResize() {
   const ta = document.getElementById('ct');
   if (!ta || ta._resizeAttached) return;
   ta._resizeAttached = true;
+  // Expand on focus (especially helpful on mobile)
+  ta.addEventListener('focus', () => {
+    if (ta.offsetHeight < 100) { ta.style.minHeight = '110px'; }
+  });
   ta.addEventListener('input', () => {
     ta.style.height = 'auto';
     ta.style.height = ta.scrollHeight + 'px';
@@ -635,23 +658,26 @@ async function saveEditPost(id) {
 // --- FEED ---
 function rfeed() {
   const posts = S.cat==='todos' ? [...S.posts] : S.posts.filter(p=>p.category===S.cat);
+  const composeCat = S.composeCat || CATS[1]; // default primera categoría
   return `
   <div class="ftitle">inicio</div>
   <div class="fsub">comparte decoraciones, letras, simbolos y mas</div>
   <div class="ccard">
     <div class="ctop">${avEl(S.me)}<textarea class="ctxt" id="ct" placeholder="comparte algo bonito..." maxlength="${MAX_CHARS}"></textarea></div>
-    <div class="cbot">
-      <select class="csel" id="cc">${CATS.slice(1).map(c=>`<option>${c}</option>`).join('')}</select>
-      <div style="display:flex;align-items:center;gap:.5rem">
-        <span id="char-count" class="char-count">${MAX_CHARS}</span>
-        <button class="pbtn" onclick="post()">publicar</button>
-      </div>
+    <div style="display:flex;justify-content:flex-end;padding:.2rem 0 0">
+      <span id="char-count" class="char-count">${MAX_CHARS}</span>
+    </div>
+    <div class="compose-cats">
+      ${CATS.slice(1).map(c=>`<button class="compose-catb${composeCat===c?' on':''}" onclick="setComposeCat('${c}')">${c}</button>`).join('')}
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-top:.65rem">
+      <button class="pbtn" onclick="post()">publicar</button>
     </div>
   </div>
   <div class="cats">${CATS.map(c=>`<button class="catb${S.cat===c?' on':''}" onclick="setcat('${c}')">${c}</button>`).join('')}</div>
   ${posts.length===0
-    ? `<div class="empty"><div class="ei">🌸</div><div class="el">aun no hay publicaciones aqui</div></div>`
-    : posts.map(rpost).join('') + `<div style="text-align:center;margin:1.5rem 0"><button class="load-more-btn" onclick="loadMore()">cargar mas</button></div>`
+    ? `<div class="empty"><div class="ei">🌸</div><div class="el">todavia no hay publicaciones aqui — se el primero ✦</div></div>`
+    : posts.map(rpost).join('') + `<div id="scroll-sentinel" style="height:1px;margin:1rem 0"></div>`
   }`;
 }
 
@@ -699,7 +725,7 @@ function rpost(p) {
         <button class="sendbtn" onclick="scmt('${p.id}')">↑</button>
       </div>
       ${cmts.map((c,ci)=>`<div class="cm">
-        ${avEl({name:c.un,username:c.un,avatar_url:c.av||null})}
+        <div onclick="vprof('${c.uid}')" style="cursor:pointer" title="ver perfil">${avEl({name:c.un,username:c.un,avatar_url:c.av||null})}</div>
         <div class="cmb">
           <div class="cma">
             <span>${esc(c.un)}</span>
@@ -811,6 +837,15 @@ function renderCollections(userFolders, col, own) {
 
 // --- ACCIONES ---
 function setcat(c) { S.cat=c; S.menu=null; render(); }
+function setComposeCat(c) {
+  S.composeCat = c;
+  // Solo re-renderizar las pills sin perder el texto del textarea
+  const txt = document.getElementById('ct')?.value || '';
+  render();
+  // Restaurar texto después del render
+  const ta = document.getElementById('ct');
+  if (ta && txt) { ta.value = txt; ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }
+}
 function stptab(t) { S.ptab=t; S.activeFolderTab=null; render(); }
 function tmenu(id,e) { e.stopPropagation(); id=isNaN(id)?id:Number(id); S.menu=S.menu===id?null:id; render(); }
 
@@ -822,15 +857,30 @@ document.addEventListener('click', e => {
 
 async function post() {
   const txt = document.getElementById('ct').value.trim();
-  const cat = document.getElementById('cc').value;
+  const cat = S.composeCat || CATS[1];
   if (!txt) return toast('escribe algo primero');
   if (txt.length > MAX_CHARS) return toast('maximo '+MAX_CHARS+' caracteres');
   const btn = document.querySelector('.pbtn');
   if (btn) { btn.textContent='publicando...'; btn.disabled=true; }
-  const { error } = await db.from('posts').insert([{ body:txt, category:cat, user_id:S.me.id, username:S.me.user_metadata?.display_name||S.me.email, author_av:S.me.user_metadata?.avatar_url||null }]);
+  const { data, error } = await db.from('posts').insert([{ body:txt, category:cat, user_id:S.me.id, username:S.me.user_metadata?.display_name||S.me.email, author_av:S.me.user_metadata?.avatar_url||null }]).select();
   if (btn) { btn.textContent='publicar'; btn.disabled=false; }
   if (error) toast('Error: '+error.message);
-  else { document.getElementById('ct').value=''; fetchPosts(); toast('publicado'); }
+  else {
+    document.getElementById('ct').value='';
+    // Añadir nuevo post al inicio con animación
+    if (data && data[0]) {
+      const np = { ...data[0], likes: [], cmts: [], saved: [], t: data[0].created_at };
+      S.posts.unshift(np);
+    }
+    render();
+    // Marcar el primer post como nuevo para la animación
+    setTimeout(() => {
+      const first = document.querySelector('.pcard');
+      if (first) { first.classList.add('new-post'); setTimeout(()=>first.classList.remove('new-post'), 400); }
+      setupInfiniteScroll();
+    }, 30);
+    toast('publicado');
+  }
 }
 
 function copyPost(id) {
@@ -1001,10 +1051,132 @@ async function savemod() {
   else { S.me.user_metadata.display_name=n; S.me.user_metadata.bio=b; S.modal=false; render(); toast('perfil actualizado'); }
 }
 
+// --- TOGGLE PASSWORD VISIBILITY ---
+function togglePw(inputId, btn) {
+  const inp = document.getElementById(inputId);
+  if (!inp) return;
+  if (inp.type === 'password') {
+    inp.type = 'text';
+    btn.textContent = '🙈';
+  } else {
+    inp.type = 'password';
+    btn.textContent = '👁';
+  }
+}
+
+// --- VALIDACION INLINE AUTH ---
+function validateLogin() {
+  const email = document.getElementById('lu').value.trim();
+  const pw = document.getElementById('lp').value;
+  const err = document.getElementById('le');
+  if (!email) { err.textContent = 'ingresa tu correo'; return false; }
+  if (!email.includes('@')) { err.textContent = 'correo invalido'; return false; }
+  if (!pw) { err.textContent = 'ingresa tu contraseña'; return false; }
+  err.textContent = '';
+  return true;
+}
+
+function validateRegister() {
+  const name = document.getElementById('rn').value.trim();
+  const user = document.getElementById('ru').value.trim();
+  const email = document.getElementById('re').value.trim();
+  const pw = document.getElementById('rp').value;
+  const err = document.getElementById('ree');
+  if (!name) { err.textContent = 'ingresa tu nombre'; return false; }
+  if (!user) { err.textContent = 'elige un nombre de usuario'; return false; }
+  if (!email || !email.includes('@')) { err.textContent = 'correo invalido'; return false; }
+  if (pw.length < 6) { err.textContent = 'la contraseña debe tener al menos 6 caracteres'; return false; }
+  err.textContent = '';
+  return true;
+}
+
+// Parchear login y register para validar antes de enviar
+const _origLogin = login;
+window.login = async function() {
+  if (!validateLogin()) return;
+  await _origLogin();
+};
+const _origRegister = register;
+window.register = async function() {
+  if (!validateRegister()) return;
+  await _origRegister();
+};
+
+// Enter para enviar formularios de auth
+document.addEventListener('DOMContentLoaded', () => {
+  ['lu','lp'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') window.login(); });
+  });
+  ['rn','ru','re','rp'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') window.register(); });
+  });
+});
+
+// --- SKELETON LOADING ---
+function showSkeletons(n = 4) {
+  const mc = document.getElementById('mc');
+  if (!mc) return;
+  const sk = `<div class="skeleton-card"><div class="sk-head"><div class="sk-line sk-avatar"></div><div class="sk-meta"><div class="sk-line short"></div><div class="sk-line tiny"></div></div></div><div class="sk-line full"></div><div class="sk-line med"></div></div>`;
+  mc.innerHTML = sk.repeat(n);
+}
+
+// --- INFINITE SCROLL ---
+let _sentinel = null;
+function setupInfiniteScroll() {
+  if (_sentinel) { _sentinel.disconnect(); _sentinel = null; }
+  const el = document.getElementById('scroll-sentinel');
+  if (!el) return;
+  _sentinel = new IntersectionObserver(entries => {
+    if (entries[0].isIntersecting) loadMore();
+  }, { rootMargin: '200px' });
+  _sentinel.observe(el);
+}
+
+// --- COPY con feedback visual ---
+const _origCopyPost = copyPost;
+window.copyPost = function(id) {
+  id = isNaN(id)?id:Number(id);
+  const p = S.posts.find(x=>x.id===id); if(!p) return;
+  const doFeedback = () => {
+    // Cambiar ícono del botón momentáneamente
+    const btn = document.querySelector(`#post-${safeId(id)} .copy-btn`);
+    if (btn) {
+      const orig = btn.innerHTML;
+      btn.innerHTML = '✓ copiado';
+      btn.classList.add('copy-done');
+      setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('copy-done'); }, 1400);
+    }
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(p.body).then(() => { toast('copiado'); doFeedback(); }).catch(() => { fallbackCopy(p.body); doFeedback(); });
+  } else { fallbackCopy(p.body); doFeedback(); }
+};
+
+// --- NOTIF BADGE EN MÓVIL ---
+const _origRenderNotifBadge = renderNotifBadge;
+window.renderNotifBadge = function() {
+  _origRenderNotifBadge();
+  const count = S.notifs.filter(n => !n.read).length;
+  const mobBadge = document.getElementById('mob-notif-badge');
+  if (mobBadge) {
+    mobBadge.textContent = count > 9 ? '9+' : (count || '');
+    mobBadge.style.display = count > 0 ? 'flex' : 'none';
+  }
+};
+
+// --- SETUP INFINITE SCROLL AL CARGAR EL FEED ---
+const _origGofeed = gofeed;
+window.gofeed = function() {
+  _origGofeed();
+  setTimeout(setupInfiniteScroll, 300);
+};
+
 // --- EXPOSE ---
 window.tlike=tlike; window.tsave=tsave; window.tcmt=tcmt; window.scmt=scmt; window.dcmt=dcmt;
 window.tocol=tocol; window.dpost=dpost; window.tmenu=tmenu; window.vprof=vprof;
-window.post=post; window.setcat=setcat; window.stptab=stptab; window.loadMore=loadMore;
+window.post=post; window.setcat=setcat; window.setComposeCat=setComposeCat; window.stptab=stptab; window.loadMore=loadMore;
 window.gofeed=gofeed; window.goprofile=goprofile; window.logout=logout;
 window.openmod=openmod; window.closemod=closemod; window.mclose=mclose; window.savemod=savemod;
 window.upavatar=upavatar; window.stab=stab; window.login=login; window.register=register;
@@ -1018,6 +1190,7 @@ window.havatar=havatar; window.copyPost=copyPost;
 window.openEditPost=openEditPost; window.closeEditPost=closeEditPost; window.saveEditPost=saveEditPost;
 window.toggleNotif=toggleNotif; window.goNotif=goNotif; window.clearNotifs=clearNotifs;
 window.confirmAction=confirmAction; window.renderConfirmModal=renderConfirmModal;
+window.togglePw=togglePw;
 
 showLoading();
 // Usar refreshSession en lugar de getSession para garantizar token válido y metadatos frescos
@@ -1035,11 +1208,11 @@ db.auth.refreshSession().then(({data, error})=>{
 // ======== MOBILE BOTTOM NAV ========
 
 function mobSetActive(tab) {
-  ['mob-home','mob-search','mob-saved','mob-profile'].forEach(id => {
+  ['mob-home','mob-search','mob-notif','mob-profile'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.remove('active');
   });
-  const map = { home:'mob-home', search:'mob-search', saved:'mob-saved', profile:'mob-profile' };
+  const map = { home:'mob-home', search:'mob-search', notif:'mob-notif', profile:'mob-profile' };
   const el = document.getElementById(map[tab]);
   if (el) el.classList.add('active');
 }
