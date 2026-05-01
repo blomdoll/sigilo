@@ -528,6 +528,9 @@ header { position: relative; }
 .fp-check { margin-left: auto; color: var(--w1); font-weight: 700; }
 
 /* ======== MOBILE BOTTOM NAV ======== */
+.mob-nav,
+.mob-search-panel { display: none; }
+
 @media (max-width: 640px) {
 
   /* Ocultar nav buttons de escritorio en móvil */
