@@ -140,20 +140,50 @@ function boot() {
   gofeed();
 }
 
-// --- PAGINACION ---
-async function fetchPosts(reset=true) {
-  if (reset) S.page_num = 1;
-  const to = S.page_num * S.PAGE_SIZE - 1;
-  const { data, error } = await db.from('posts').select('*').order('created_at', { ascending: false }).range(0, to);
-  if (!error) {
-    S.posts = data.map(p => ({
+async function fetchPosts(reset = true) {
+  const feedContainer = document.getElementById('posts-container'); 
+  // Nota: Asegúrate de que en tu HTML el contenedor de posts tenga id="posts-container" o cámbialo aquí al id que uses.
+
+  if (reset) {
+    S.page_num = 1;
+    offset = 0;
+    if (feedContainer) feedContainer.innerHTML = ''; 
+  }
+
+  const desde = offset;
+  const hasta = desde + PAGE_SIZE - 1;
+
+  const { data, error } = await db
+    .from('posts')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .range(desde, hasta);
+
+  if (error) {
+    console.error("Error en el feed:", error);
+    return;
+  }
+
+  if (data && data.length > 0) {
+    const newPosts = data.map(p => ({
       ...p,
-      likes: Array.isArray(p.likes)?p.likes:[],
-      cmts: Array.isArray(p.cmts)?p.cmts:[],
-      saved: Array.isArray(p.saved)?p.saved:[],
+      likes: Array.isArray(p.likes) ? p.likes : [],
+      cmts: Array.isArray(p.cmts) ? p.cmts : [],
+      saved: Array.isArray(p.saved) ? p.saved : [],
       t: p.created_at
     }));
-    render();
+
+    if (reset) {
+      S.posts = newPosts;
+    } else {
+      // Evitar duplicados por si acaso
+      const existingIds = new Set(S.posts.map(p => p.id));
+      const filteredNew = newPosts.filter(p => !existingIds.has(p.id));
+      S.posts = [...S.posts, ...filteredNew];
+    }
+    
+    offset += data.length;
+    render(); // Esto actualiza la interfaz de "Sigilo"
   }
 }
 
