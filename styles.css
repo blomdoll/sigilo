@@ -75,6 +75,18 @@ header{
 }
 .nlog:hover{background:var(--w4);color:var(--w2);}
 
+/* logout button */
+.nlog-out{
+  display:inline-flex;align-items:center;gap:.38rem;
+  padding:.4rem .8rem;border-radius:var(--r2);
+  background:transparent;
+  color:var(--tx3);
+  font-size:.78rem;
+  border:1px solid var(--bd);
+  transition:background .15s,color .15s,border-color .15s;
+}
+.nlog-out:hover{background:var(--s2);color:var(--tx2);border-color:var(--tx3);}
+
 main{flex:1;padding:1.25rem;max-width:660px;margin:0 auto;width:100%;}
 
 /* feed */
