@@ -379,14 +379,13 @@ function nav() {
   const el = document.getElementById(S.page==='feed'?'nf':'np'); if(el) el.className='nbtn on';
 }
 
-function avEl(user, big=false, own=false) {
+function avEl(user, big=false) {
   const cls = big ? 'pav' : 'av';
   const name = user?.user_metadata?.display_name||user?.display_name||user?.name||user?.username||user?.email||'?';
   const ini = name.split(' ').map(w=>w[0]).filter(Boolean).join('').toUpperCase().slice(0,2)||'?';
   const avatarUrl = user?.user_metadata?.avatar_url||user?.avatar_url||user?.av||null;
-  const overlay = (big && own) ? '<div class="pavov">cambiar foto</div>' : '';
-  if (avatarUrl) return `<div class="${cls}"><img src="${esc(avatarUrl)}" alt=""/>${overlay}</div>`;
-  return `<div class="${cls}">${ini}${overlay}</div>`;
+  if (avatarUrl) return `<div class="${cls}"><img src="${esc(avatarUrl)}" alt=""/>${big?'<div class="pavov">cambiar foto</div>':''}</div>`;
+  return `<div class="${cls}">${ini}${big?'<div class="pavov">cambiar foto</div>':''}</div>`;
 }
 
 function render() {
@@ -605,29 +604,19 @@ function rpost(p) {
 
 // --- PERFIL ---
 function rprofile() {
-  const own = S.puid === S.me.id;
-  
-  let user;
-  if (own) {
-    user = S.me;
-  } else {
-    // Busca un post de ese usuario para sacar su avatar y nombre
-    const refPost = S.posts.find(p => p.user_id === S.puid);
-    user = S.users.find(x => x.id === S.puid) || {
-      name: refPost?.username || 'Usuario',
-      username: refPost?.username || 'Usuario',
-      avatar_url: refPost?.author_av || null,
-      id: S.puid
-    };
-  }
-  
-  const own2 = own; // alias para claridad en el template
-  ...
+  const user = S.puid===S.me.id ? S.me : (S.users.find(x=>x.id===S.puid)||{ name:'Usuario', id:S.puid });
+  const own = S.puid===S.me.id;
+  const tab = S.ptab;
+  const myp = S.posts.filter(p=>p.user_id===S.puid);
+  const svd = S.posts.filter(p=>Array.isArray(p.saved)&&p.saved.includes(S.me.id));
+  const col = S.posts.filter(p=>p.user_id===S.puid&&p.col);
+  const userFolders = S.folders.filter(f=>f.user_id===S.puid);
+
   return `
   <div class="ppage">
     <div class="pavwrap">
-      <div class="pav" ${own?'onclick="upavatar()"':''} ...>
-        ${avEl(user, true, own)}
+      <div class="pav" ${own?'onclick="upavatar()"':''} style="${own?'cursor:pointer':'cursor:default'}">
+        ${avEl(user,true)}
       </div>
     </div>
     <input type="file" id="avup" accept="image/*" style="display:none" onchange="havatar(event)"/>
