@@ -526,3 +526,61 @@ header { position: relative; }
 .folder-pick-btn.active { background: var(--w4); border-color: var(--w1); color: var(--w2); font-weight: 500; }
 .fp-icon { font-size: 1rem; }
 .fp-check { margin-left: auto; color: var(--w1); font-weight: 700; }
+
+/* ======== MOBILE BOTTOM NAV ======== */
+@media (max-width: 640px) {
+
+  /* Ocultar nav buttons de escritorio en móvil */
+  .hnav .nbtn,
+  .hnav .nlog-out,
+  .hnav #ns {
+    display: none !important;
+  }
+
+  /* Padding inferior para que el contenido no quede tapado */
+  #app {
+    padding-bottom: 64px;
+  }
+
+  /* Toast sube para no quedar detrás del nav */
+  .toast {
+    bottom: 80px;
+  }
+
+  /* ---- Bottom nav bar ---- */
+  .mob-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: 62px;
+    background: var(--surface);
+    border-top: 1px solid var(--bd);
+    z-index: 80;
+    align-items: stretch;
+    box-shadow: 0 -2px 14px rgba(44,24,16,.07);
+  }
+
+  .mob-nav-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    background: transparent;
+    color: var(--tx3);
+    font-size: .62rem;
+    font-family: var(--fb);
+    padding: 0;
+    border-radius: 0;
+    transition: color .15s;
+    cursor: pointer;
+  }
+
+  .mob-nav-btn svg {
+    stroke: currentColor;
+    transition: stroke .15s;
+  }
+
+  .mob-nav-btn:hover,
+  .mob-nav-btn.ac
