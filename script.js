@@ -855,15 +855,23 @@ async function scmt(id) {
   }
 }
 
-async function dcmt(postId, cmtIndex) {
-  postId = isNaN(postId)?postId:Number(postId);
-  const p = S.posts.find(x=>x.id===postId); if(!p||!Array.isArray(p.cmts)) return;
-  const cmt = p.cmts[cmtIndex];
-  if (!cmt || cmt.uid !== S.me.id) return toast('no puedes eliminar este comentario');
-  p.cmts.splice(cmtIndex,1);
-  const {error} = await db.from('posts').update({cmts:p.cmts}).eq('id',postId);
-  if(error){p.cmts.splice(cmtIndex,0,cmt);toast('Error al eliminar comentario');}
-  else { toast('comentario eliminado'); render(); }
+async function dcmt(postId, cmtId) { // Cambiamos cmtIndex por cmtId
+  postId = isNaN(postId) ? postId : Number(postId);
+  const p = S.posts.find(x => x.id === postId); 
+  if (!p || !Array.isArray(p.cmts)) return;
+
+  // Filtramos el array para quitar el comentario que coincida con el ID
+  const nuevosComentarios = p.cmts.filter(c => c.id !== cmtId);
+
+  const { error } = await db.from('posts').update({ cmts: nuevosComentarios }).eq('id', postId);
+
+  if (error) {
+    toast('Error al eliminar comentario');
+  } else {
+    p.cmts = nuevosComentarios;
+    toast('comentario eliminado'); 
+    render(); 
+  }
 }
 
 function upavatar() { document.getElementById('avup').click(); }
