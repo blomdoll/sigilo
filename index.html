@@ -65,6 +65,35 @@
     </header>
     <main id="mc"></main>
     <footer>Creado por <b>Sage Aksnes / @blomdoll</b></footer>
+
+    <!-- Mobile bottom nav (solo visible en móvil) -->
+    <nav class="mob-nav" id="mobNav">
+      <button class="mob-nav-btn" id="mob-home" onclick="gofeed(); mobSetActive('home')" title="Inicio">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z"/><polyline points="9 21 9 12 15 12 15 21"/></svg>
+        <span>inicio</span>
+      </button>
+      <button class="mob-nav-btn" id="mob-search" onclick="mobToggleSearch()" title="Buscar">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <span>buscar</span>
+      </button>
+      <button class="mob-nav-btn" id="mob-saved" onclick="goprofile(); setTimeout(()=>stptab('saved'),80); mobSetActive('saved')" title="Guardados">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+        <span>guardados</span>
+      </button>
+      <button class="mob-nav-btn" id="mob-profile" onclick="goprofile(); mobSetActive('profile')" title="Perfil">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span>perfil</span>
+      </button>
+    </nav>
+
+    <!-- Mobile search panel (solo visible en móvil) -->
+    <div id="mobSearchPanel" class="mob-search-panel" style="display:none">
+      <div class="mob-search-inner">
+        <input id="mobSearchInput" class="mob-search-input" placeholder="buscar usuarios..." oninput="mobSearchUsers()" autocomplete="off"/>
+        <button class="mob-search-close" onclick="mobCloseSearch()">✕</button>
+      </div>
+      <div id="mobSearchResults" class="searchResults" style="padding:.4rem .6rem"></div>
+    </div>
   </div>
 
   <!-- Notificación toast -->
@@ -75,3 +104,4 @@
   <script src="script.js"></script>
 </body>
 </html>
+
