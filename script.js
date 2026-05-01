@@ -611,49 +611,64 @@ function rpost(p) {
   </div>`;
 }
 
-// --- PERFIL ---
+// PERFIL
 function rprofile() {
-  const user = S.puid===S.me.id ? S.me : (S.users.find(x=>x.id===S.puid)||{ name:'Usuario', id:S.puid });
-  const own = S.puid===S.me.id;
+  const own = S.puid === S.me.id;
+  
+  // CORRECCIÓN: Si no es nuestro perfil, buscamos los datos en los posts cargados
+  // ya que S.users suele estar vacío inicialmente
+  let user;
+  if (own) {
+    user = S.me;
+  } else {
+    const authorData = S.posts.find(p => p.user_id === S.puid);
+    user = S.users.find(x => x.id === S.puid) || { 
+      username: authorData?.username || 'Usuario', 
+      avatar_url: authorData?.author_av || null,
+      id: S.puid 
+    };
+  }
+
   const tab = S.ptab;
-  const myp = S.posts.filter(p=>p.user_id===S.puid);
-  const svd = S.posts.filter(p=>Array.isArray(p.saved)&&p.saved.includes(S.me.id));
-  const col = S.posts.filter(p=>p.user_id===S.puid&&p.col);
-  const userFolders = S.folders.filter(f=>f.user_id===S.puid);
+  const myp = S.posts.filter(p => p.user_id === S.puid);
+  const svd = S.posts.filter(p => Array.isArray(p.saved) && p.saved.includes(S.me.id));
+  const col = S.posts.filter(p => p.user_id === S.puid && p.col);
+  const userFolders = S.folders.filter(f => f.user_id === S.puid);
 
   return `
   <div class="ppage">
     <div class="pavwrap">
-      <div class="pav" ${own?'onclick="upavatar()"':''} style="${own?'cursor:pointer':'cursor:default'}">
-        ${avEl(user,true)}
+      <div class="pav" ${own ? 'onclick="upavatar()"' : ''} style="${own ? 'cursor:pointer' : 'cursor:default'}">
+        <!-- Pasamos 'own' como tercer argumento para que el mensaje no salga en perfiles ajenos -->
+        ${avEl(user, true, own)} 
       </div>
     </div>
     <input type="file" id="avup" accept="image/*" style="display:none" onchange="havatar(event)"/>
     <div class="pinfo">
-      <div class="pname">${esc(user.user_metadata?.display_name||user.name||user.email)}</div>
-      <div class="pbio">${esc(user.user_metadata?.bio||user.bio||'sin biografia aun')}</div>
-      ${own?`<button class="editbtn" onclick="openmod()">editar perfil</button>`:''}
+      <div class="pname">${esc(user.user_metadata?.display_name || user.username || user.name || user.email)}</div>
+      <div class="pbio">${esc(user.user_metadata?.bio || user.bio || 'sin biografia aun')}</div>
+      ${own ? `<button class="editbtn" onclick="openmod()">editar perfil</button>` : ''}
     </div>
     <div class="ptabs">
-      <button class="ptab${tab==='posts'?' on':''}" onclick="stptab('posts')">publicaciones</button>
-      <button class="ptab${tab==='col'?' on':''}" onclick="stptab('col')">colecciones</button>
-      ${own?`<button class="ptab${tab==='saved'?' on':''}" onclick="stptab('saved')">guardados</button>`:''}
+      <button class="ptab${tab === 'posts' ? ' on' : ''}" onclick="stptab('posts')">publicaciones</button>
+      <button class="ptab${tab === 'col' ? ' on' : ''}" onclick="stptab('col')">colecciones</button>
+      ${own ? `<button class="ptab${tab === 'saved' ? ' on' : ''}" onclick="stptab('saved')">guardados</button>` : ''}
     </div>
-    ${tab==='posts'?(myp.length?myp.map(rpost).join(''):`<div class="empty"><div class="el">aun no hay publicaciones</div></div>`):''}
-    ${tab==='saved'?(svd.length?svd.map(rpost).join(''):`<div class="empty"><div class="el">aun no guardaste nada</div></div>`):''}
-    ${tab==='col'?renderCollections(userFolders,col,own):''}
+    ${tab === 'posts' ? (myp.length ? myp.map(rpost).join('') : `<div class="empty"><div class="el">aun no hay publicaciones</div></div>`) : ''}
+    ${tab === 'saved' ? (svd.length ? svd.map(rpost).join('') : `<div class="empty"><div class="el">aun no guardaste nada</div></div>`) : ''}
+    ${tab === 'col' ? renderCollections(userFolders, col, own) : ''}
   </div>
-  ${S.modal?`<div class="mov" onclick="mclose(event)">
+  ${S.modal ? `<div class="mov" onclick="mclose(event)">
     <div class="mdl">
       <div class="mdlt">Editar perfil</div>
-      <div class="field"><label>Nombre</label><input id="en" value="${esc(S.me.user_metadata?.display_name||S.me.name||'')}"/></div>
-      <div class="field"><label>Biografia</label><textarea id="eb" placeholder="cuentanos de ti...">${esc(S.me.user_metadata?.bio||S.me.bio||'')}</textarea></div>
+      <div class="field"><label>Nombre</label><input id="en" value="${esc(S.me.user_metadata?.display_name || S.me.name || '')}"/></div>
+      <div class="field"><label>Biografia</label><textarea id="eb" placeholder="cuentanos de ti...">${esc(S.me.user_metadata?.bio || S.me.bio || '')}</textarea></div>
       <div class="macts">
         <button class="cancelbtn" onclick="closemod()">cancelar</button>
         <button class="savebtn" onclick="savemod()">guardar</button>
       </div>
     </div>
-  </div>`:''}`;
+  </div>` : ''}`;
 }
 
 function renderCollections(userFolders, col, own) {
