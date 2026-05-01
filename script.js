@@ -379,13 +379,22 @@ function nav() {
   const el = document.getElementById(S.page==='feed'?'nf':'np'); if(el) el.className='nbtn on';
 }
 
-function avEl(user, big=false) {
+function avEl(user, big = false, canEdit = false) {
   const cls = big ? 'pav' : 'av';
-  const name = user?.user_metadata?.display_name||user?.display_name||user?.name||user?.username||user?.email||'?';
-  const ini = name.split(' ').map(w=>w[0]).filter(Boolean).join('').toUpperCase().slice(0,2)||'?';
-  const avatarUrl = user?.user_metadata?.avatar_url||user?.avatar_url||user?.av||null;
-  if (avatarUrl) return `<div class="${cls}"><img src="${esc(avatarUrl)}" alt=""/>${big?'<div class="pavov">cambiar foto</div>':''}</div>`;
-  return `<div class="${cls}">${ini}${big?'<div class="pavov">cambiar foto</div>':''}</div>`;
+  // Obtenemos el nombre para las iniciales
+  const name = user?.user_metadata?.display_name || user?.display_name || user?.name || user?.username || user?.email || '?';
+  const ini = name.split(' ').map(w => w[0]).filter(Boolean).join('').toUpperCase().slice(0, 2) || '?';
+  
+  // Buscamos la URL del avatar en las distintas propiedades posibles
+  const avatarUrl = user?.user_metadata?.avatar_url || user?.avatar_url || user?.av || null;
+  
+  // Solo mostramos el overlay de "cambiar foto" si es el perfil grande Y el usuario tiene permiso
+  const overlay = (big && canEdit) ? '<div class="pavov">cambiar foto</div>' : '';
+
+  if (avatarUrl) {
+    return `<div class="${cls}"><img src="${esc(avatarUrl)}" alt=""/>${overlay}</div>`;
+  }
+  return `<div class="${cls}">${ini}${overlay}</div>`;
 }
 
 function render() {
