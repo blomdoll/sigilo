@@ -134,7 +134,6 @@ main{flex:1;padding:1.25rem;max-width:660px;margin:0 auto;width:100%;}
 
 /* post card */
 .pcard{background:var(--surface);border:1px solid var(--bd);border-radius:var(--r);padding:1.15rem;margin-bottom:.9rem;transition:border-color .18s,box-shadow .18s;}
-.pcard.menu-open{z-index:10;position:relative;}
 .pcard:hover{border-color:var(--w3);box-shadow:0 4px 18px rgba(44,24,16,.08);}
 .phead{display:flex;align-items:center;gap:.7rem;margin-bottom:.8rem;}
 .puname{font-weight:500;font-size:.86rem;color:var(--tx);cursor:pointer;}
@@ -163,10 +162,10 @@ main{flex:1;padding:1.25rem;max-width:660px;margin:0 auto;width:100%;}
 }
 .dotsbtn:hover{background:var(--w4);color:var(--w2);}
 .pmenu{
-  position:absolute;right:0;top:32px;
+  position:fixed;
   background:var(--surface);border:1px solid var(--bd);
   border-radius:var(--r2);box-shadow:0 4px 14px rgba(44,24,16,.1);
-  min-width:170px;z-index:200;overflow:hidden;
+  min-width:170px;z-index:9999;
 }
 .mi{
   width:100%;padding:.62rem .95rem;font-size:.81rem;
@@ -430,7 +429,7 @@ header { position: relative; }
 @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
 
 /* ---- POST FADE-IN ---- */
-@keyframes postIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:none} }
+@keyframes postIn { from{opacity:0} to{opacity:1} }
 .pcard { animation: postIn .25s ease both; }
 
 /* ---- SELECTOR DE CATEGORÍA EN COMPOSE (pills) ---- */
