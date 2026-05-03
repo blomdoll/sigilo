@@ -694,7 +694,7 @@ function rpost(p) {
   const cid = safeId(p.id);
 
   return `
-  <div class="pcard" id="post-${cid}">
+  <div class="pcard${mopen?' menu-open':''}" id="post-${cid}">
     <div class="phead">
       ${avEl(author)}
       <div style="flex:1">
