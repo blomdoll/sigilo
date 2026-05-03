@@ -768,3 +768,19 @@ tive { color: var(--w1); }
     margin: 0 auto .75rem;
   }
 }
+
+/* ---- Panel de notificaciones en móvil ---- */
+@media (max-width: 640px) {
+  .notif-panel {
+    position: fixed;
+    bottom: 62px; /* encima del mob-nav */
+    top: auto;
+    left: 0; right: 0;
+    width: 100%;
+    max-height: 70vh;
+    border-radius: 18px 18px 0 0;
+    border-left: none; border-right: none; border-bottom: none;
+    box-shadow: 0 -4px 24px rgba(44,24,16,.15);
+    z-index: 90;
+  }
+}
