@@ -17,6 +17,7 @@ const S = {
   coOpen: {},
   cat: 'todos',
   menu: null,
+  menuPos: null,
   folders: [],
   folderModal: false,
   folderTarget: null,
@@ -704,7 +705,7 @@ function rpost(p) {
       <span class="pbadge">${esc(p.category)}</span>
       ${own?`<div class="mwrap">
         <button class="dotsbtn" onclick="tmenu('${p.id}',event)">...</button>
-        ${mopen?`<div class="pmenu">
+        ${mopen?`<div class="pmenu" style="top:${S.menuPos?S.menuPos.top:0}px;right:${S.menuPos?S.menuPos.right:0}px">
           <button class="mi" onclick="openEditPost('${p.id}')">✎ editar</button>
           <button class="mi" onclick="tocol('${p.id}')">⊞ ${p.col?'quitar de coleccion':'guardar en coleccion'}</button>
           ${p.col?`<button class="mi" onclick="openFolderPicker('${p.id}')">📁 ${p.folder_id?'mover de carpeta':'poner en carpeta'}</button>`:''}
@@ -847,7 +848,15 @@ function setComposeCat(c) {
   if (ta && txt) { ta.value = txt; ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }
 }
 function stptab(t) { S.ptab=t; S.activeFolderTab=null; render(); }
-function tmenu(id,e) { e.stopPropagation(); id=isNaN(id)?id:Number(id); S.menu=S.menu===id?null:id; render(); }
+function tmenu(id,e) {
+  e.stopPropagation();
+  id=isNaN(id)?id:Number(id);
+  if (S.menu===id) { S.menu=null; S.menuPos=null; render(); return; }
+  S.menu=id;
+  const r=e.currentTarget.getBoundingClientRect();
+  S.menuPos={top:r.bottom+4, right:window.innerWidth-r.right};
+  render();
+}
 
 document.addEventListener('click', e => {
   if (S.menu && !e.target.closest('.mwrap')) { S.menu=null; render(); }
