@@ -216,17 +216,13 @@ async function fetchPosts(reset = true) {
   }
 }
 
-let _loadingMore = false;
 async function loadMore() {
-  if (_loadingMore) return;
-  _loadingMore = true;
   const btn = document.querySelector('.load-more-btn');
   if (btn) { btn.textContent = 'cargando...'; btn.disabled = true; }
   
   await fetchPosts(false); // Llamamos con reset=false para que sume al offset
   
   if (btn) { btn.textContent = 'cargar mas'; btn.disabled = false; }
-  _loadingMore = false;
 }
 
 async function logout() {
@@ -531,8 +527,8 @@ function render() {
   renderConfirmModal();
   renderNotifBadge();
   attachTextareaResize();
+  if (S.page === 'feed') setTimeout(setupInfiniteScroll, 60);
 }
-
 
 function attachTextareaResize() {
   const ta = document.getElementById('ct');
@@ -1134,7 +1130,7 @@ function setupInfiniteScroll() {
   if (!el) return;
   _sentinel = new IntersectionObserver(entries => {
     if (entries[0].isIntersecting) loadMore();
-  }, { rootMargin: '0px', threshold: 0.1 });
+  }, { rootMargin: '200px' });
   _sentinel.observe(el);
 }
 
