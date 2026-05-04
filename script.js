@@ -758,7 +758,10 @@ function rpost(p) {
   const likes = Array.isArray(p.likes)?p.likes:[];
   const saved  = Array.isArray(p.saved)?p.saved:[];
   const cmts   = Array.isArray(p.cmts)?p.cmts:[];
-  const author = S.users.find(x=>x.id===p.user_id)||{ name:p.username||'Usuario', username:p.username||'Usuario', avatar_url:p.author_av||null };
+  // Si es nuestro propio post, leer siempre el nombre actual de S.me para reflejar cambios sin recargar
+  const author = p.user_id === S.me.id
+    ? { name: S.me.user_metadata?.display_name||S.me.email, username: S.me.user_metadata?.display_name||S.me.email, avatar_url: S.me.user_metadata?.avatar_url||p.author_av||null }
+    : (S.users.find(x=>x.id===p.user_id) || { name:p.username||'Usuario', username:p.username||'Usuario', avatar_url:p.author_av||null });
   const liked = likes.includes(S.me.id);
   const isSaved = saved.includes(S.me.id);
   const own = p.user_id===S.me.id;
@@ -1226,16 +1229,31 @@ function mclose(e){if(e.target===e.currentTarget)closemod();}
 async function savemod() {
   const n=document.getElementById('en').value.trim(), b=document.getElementById('eb').value.trim();
   if(!n) return;
+  const btn = document.querySelector('#confirmModal .savebtn, .mdl .savebtn');
+  if (btn) { btn.textContent='guardando...'; btn.disabled=true; }
   const {error}=await db.auth.updateUser({data:{display_name:n,bio:b}});
-  if(error) toast('Error al guardar perfil');
-  else {
-    S.me.user_metadata.display_name=n; S.me.user_metadata.bio=b;
-    // Sincronizar con tabla profiles para que la búsqueda refleje el nuevo nombre
+  if (btn) { btn.textContent='guardar'; btn.disabled=false; }
+  if(error) { toast('Error al guardar perfil'); return; }
+
+  const oldName = S.me.user_metadata.display_name;
+  S.me.user_metadata.display_name=n; S.me.user_metadata.bio=b;
+
+  // 1. Sincronizar tabla profiles (para búsqueda)
+  try {
+    await db.from('profiles').upsert([{ id: S.me.id, username: n, display_name: n, bio: b }], { onConflict: 'id' });
+  } catch(e) {}
+
+  // 2. Propagar el nuevo nombre a todos los posts existentes del usuario
+  //    Solo si realmente cambió el nombre para evitar updates innecesarios
+  if (n !== oldName) {
     try {
-      await db.from('profiles').upsert([{ id: S.me.id, username: n, display_name: n, bio: b }], { onConflict: 'id' });
+      await db.from('posts').update({ username: n }).eq('user_id', S.me.id);
     } catch(e) {}
-    S.modal=false; render(); toast('perfil actualizado');
+    // Reflejar el cambio en el estado local para que el feed no requiera recargar
+    S.posts.forEach(p => { if (p.user_id === S.me.id) p.username = n; });
   }
+
+  S.modal=false; render(); toast('perfil actualizado');
 }
 
 // --- TOGGLE PASSWORD VISIBILITY ---
