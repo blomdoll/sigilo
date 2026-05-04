@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Legal · Sigilo</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    :root{
+      --bg:#FBF6F0;--surface:#FFF9F4;--s2:#F5EDE3;
+      --w1:#C9785A;--w2:#8B4A2A;--w3:#E8C5A8;--w4:#F2DBC8;
+      --tx:#2C1810;--tx2:#7A5540;--tx3:#A07050;
+      --bd:#E8D5C0;--r:14px;--r2:10px;
+      --fd:'Playfair Display',serif;--fb:'DM Sans',sans-serif;
+    }
+    body{
+      background:var(--bg);color:var(--tx);
+      font-family:var(--fb);font-size:15px;line-height:1.7;
+    }
+
+    /* ---- header ---- */
+    header{
+      background:var(--surface);border-bottom:1px solid var(--bd);
+      padding:.75rem 1.25rem;display:flex;align-items:center;
+      justify-content:space-between;position:sticky;top:0;z-index:50;
+    }
+    .hlogo{
+      font-family:var(--fd);font-size:1.35rem;color:var(--w1);
+      text-decoration:none;
+    }
+    .hback{
+      font-size:.82rem;color:var(--tx2);text-decoration:none;
+      display:inline-flex;align-items:center;gap:.4rem;
+      padding:.4rem .8rem;border-radius:var(--r2);
+      border:1px solid var(--bd);background:transparent;
+      transition:background .15s,color .15s;
+    }
+    .hback:hover{background:var(--s2);color:var(--tx);}
+
+    /* ---- layout ---- */
+    main{
+      max-width:700px;margin:0 auto;padding:2.5rem 1.25rem 4rem;
+    }
+
+    /* ---- tab nav ---- */
+    .tabs{
+      display:flex;border:1px solid var(--bd);border-radius:var(--r2);
+      overflow:hidden;margin-bottom:2.5rem;
+    }
+    .tab-btn{
+      all:unset;box-sizing:border-box;cursor:pointer;
+      flex:1;padding:.65rem;text-align:center;
+      font-family:var(--fb);font-size:.84rem;
+      background:var(--surface);color:var(--tx2);
+      transition:background .15s,color .15s;
+    }
+    .tab-btn.on{background:var(--w1);color:#fff;}
+
+    /* ---- section ---- */
+    .section{display:none;}
+    .section.on{display:block;}
+
+    .section-title{
+      font-family:var(--fd);font-size:1.6rem;
+      color:var(--tx);margin-bottom:.3rem;
+    }
+    .section-date{
+      font-size:.78rem;color:var(--tx3);margin-bottom:2rem;
+    }
+
+    /* ---- article content ---- */
+    .legal-block{margin-bottom:1.8rem;}
+    .legal-block h2{
+      font-family:var(--fd);font-size:1.05rem;font-weight:500;
+      color:var(--w2);margin-bottom:.5rem;
+      padding-bottom:.35rem;border-bottom:1px solid var(--bd);
+    }
+    .legal-block p{
+      color:var(--tx2);font-size:.9rem;margin-bottom:.6rem;
+    }
+    .legal-block p:last-child{margin-bottom:0;}
+    .legal-block ul{
+      padding-left:1.2rem;color:var(--tx2);font-size:.9rem;
+    }
+    .legal-block ul li{margin-bottom:.35rem;}
+
+    .highlight-box{
+      background:var(--s2);border:1px solid var(--bd);
+      border-radius:var(--r2);padding:1rem 1.15rem;
+      margin-bottom:2rem;
+      font-size:.88rem;color:var(--tx2);line-height:1.6;
+    }
+    .highlight-box strong{color:var(--w2);}
+
+    .contact-box{
+      background:var(--surface);border:1px solid var(--bd);
+      border-radius:var(--r);padding:1.2rem 1.4rem;
+      margin-top:2rem;
+    }
+    .contact-box p{font-size:.88rem;color:var(--tx2);}
+    .contact-box a{color:var(--w1);text-decoration:none;}
+    .contact-box a:hover{text-decoration:underline;}
+
+    /* ---- footer ---- */
+    footer{
+      text-align:center;padding:1.5rem;
+      font-size:.78rem;color:var(--tx3);
+      border-top:1px solid var(--bd);
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <a class="hlogo" href="index.html">✦ sigilo</a>
+  <a class="hback" href="index.html">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    volver
+  </a>
+</header>
+
+<main>
+  <div class="tabs">
+    <button class="tab-btn on" onclick="showTab('privacidad', this)">Privacidad</button>
+    <button class="tab-btn" onclick="showTab('terminos', this)">Términos de uso</button>
+  </div>
+
+  <!-- ====== POLÍTICA DE PRIVACIDAD ====== -->
+  <div class="section on" id="tab-privacidad">
+    <div class="section-title">Política de privacidad</div>
+    <div class="section-date">Última actualización: junio de 2025</div>
+
+    <div class="highlight-box">
+      <strong>Resumen simple:</strong> Sigilo recopila únicamente los datos mínimos necesarios para que la plataforma funcione. No vendemos tu información ni la compartimos con terceros con fines publicitarios. Tus datos se almacenan de forma segura a través de Supabase.
+    </div>
+
+    <div class="legal-block">
+      <h2>1. Quién es responsable de tus datos</h2>
+      <p>Sigilo es una plataforma operada de forma independiente por su creador (@blomdoll). Para cualquier consulta sobre privacidad, puedes escribirnos al correo indicado al final de esta página.</p>
+    </div>
+
+    <div class="legal-block">
+      <h2>2. Qué datos recopilamos</h2>
+      <p>Al registrarte y usar Sigilo, recopilamos la siguiente información:</p>
+      <ul>
+        <li><strong>Correo electrónico</strong> — para crear y gestionar tu cuenta.</li>
+        <li><strong>Nombre de usuario y nombre de display</strong> — para identificarte en la plataforma.</li>
+        <li><strong>Contraseña</strong> — almacenada de forma encriptada por Supabase. Nosotros nunca la vemos.</li>
+        <li><strong>Foto de perfil y biografía</strong> — si decides agregarlas (opcional).</li>
+        <li><strong>Contenido publicado</strong> — posts, comentarios y colecciones que crees en la plataforma.</li>
+        <li><strong>Interacciones</strong> — likes y posts guardados que realizes.</li>
+      </ul>
+    </div>
+
+    <div class="legal-block">
+      <h2>3. Para qué usamos tus datos</h2>
+      <ul>
+        <li>Crear y mantener tu cuenta activa.</li>
+        <li>Mostrar tu perfil y contenido a otros usuarios de la comunidad.</li>
+        <li>Enviarte notificaciones dentro de la plataforma (likes, comentarios).</li>
+        <li>Mejorar el funcionamiento general de Sigilo.</li>
+      </ul>
+      <p>No usamos tus datos para publicidad, perfiles comerciales ni los compartimos con anunciantes.</p>
+    </div>
+
+    <div class="legal-block">
+      <h2>4. Dónde se almacenan tus datos</h2>
+      <p>Sigilo utiliza <strong>Supabase</strong> como proveedor de base de datos y autenticación. Los datos se almacenan en servidores ubicados en la región que Supabase asigna (actualmente AWS). Puedes consultar la política de privacidad de Supabase en <a href="https://supabase.com/privacy" target="_blank" rel="noopener" style="color:var(--w1)">supabase.com/privacy</a>.</p>
+    </div>
+
+    <div class="legal-block">
+      <h2>5. Cuánto tiempo guardamos tus datos</h2>
+      <p>Tus datos se conservan mientras tu cuenta esté activa. Si solicitas eliminar tu cuenta, borraremos tu información personal (correo, nombre, foto) y el contenido asociado en un plazo razonable. Los posts o comentarios ya eliminados por ti se borran de inmediato.</p>
+    </div>
+
+    <div class="legal-block">
+      <h2>6. Tus derechos</h2>
+      <p>Tienes derecho a:</p>
+      <ul>
+        <li>Acceder a los datos que tenemos sobre ti.</li>
+        <li>Corregir información incorrecta desde tu perfil directamente.</li>
+        <li>Solicitar la eliminación de tu cuenta y datos.</li>
+        <li>Retirar tu consentimiento en cualquier momento dejando de usar la plataforma.</li>
+      </ul>
+      <p>Para ejercer cualquiera de estos derechos, contáctanos por el correo al final de esta página.</p>
+    </div>
+
+    <div class="legal-block">
+      <h2>7. Cookies y seguimiento</h2>
+      <p>Sigilo no utiliza cookies de terceros ni herramientas de rastreo publicitario. Supabase puede usar cookies de sesión técnicas estrictamente necesarias para mantener tu inicio de sesión activo.</p>
+    </div>
+
+    <div class="legal-block">
+      <h2>8. Menores de edad</h2>
+      <p>Sigilo no está dirigido a menores de 13 años. Si tienes conocimiento de que un menor ha creado una cuenta, contáctanos para eliminarla.</p>
+    </div>
+
+    <div class="contact-box">
+      <p>¿Preguntas sobre privacidad? Escríbenos a: <a href="mailto:contacto@sigilo.app">contacto@sigilo.app</a></p>
+    </div>
+  </div>
+
+  <!-- ====== TÉRMINOS DE USO ====== -->
+  <div class="section" id="tab-terminos">
+    <div class="section-title">Términos de uso</div>
+    <div class="section-date">Última actualización: junio de 2025</div>
+
+    <div class="highlight-box">
+      <strong>Resumen simple:</strong> Sigilo es un espacio para compartir arte en texto. Úsalo con respeto. Eres responsable del contenido que publicas. Nos reservamos el derecho de eliminar cuentas que violen estas reglas.
+    </div>
+
+    <div class="legal-block">
+      <h2>1. Aceptación de los términos</h2>
+      <p>Al crear una cuenta en Sigilo, aceptas estos Términos de uso. Si no estás de acuerdo, no debes usar la plataforma.</p>
+    </div>
+
+    <div class="legal-block">
+      <h2>2. Qué es Sigilo</h2>
+      <p>Sigilo es una red social enfocada en arte en texto: decoraciones, letras, símbolos, usernames, biografías y nombres. Es un espacio creativo y comunitario, no una plataforma de comunicación privada.</p>
+    </div>
+
+    <div class="legal-block">
+      <h2>3. Tu cuenta</h2>
+      <ul>
+        <li>Debes proporcionar información verídica al registrarte.</li>
+        <li>Eres responsable de mantener la seguridad de tu contraseña.</li>
+        <li>No puedes crear cuentas con identidades falsas ni suplantar a otras personas.</li>
+        <li>Una persona, una cuenta. Las cuentas múltiples para evadir sanciones están prohibidas.</li>
+      </ul>
+    </div>
+
+    <div class="legal-block">
+      <h2>4. Contenido permitido y prohibido</h2>
+      <p>Sigilo celebra la creatividad. Sin embargo, está estrictamente prohibido publicar:</p>
+      <ul>
+        <li>Contenido que incite odio, discriminación o violencia hacia personas o grupos.</li>
+        <li>Contenido sexual explícito o pornográfico.</li>
+        <li>Información personal de terceros sin su consentimiento (doxing).</li>
+        <li>Spam, publicidad no solicitada o contenido repetitivo con fines comerciales.</li>
+        <li>Contenido que infrinja derechos de autor de terceros de forma evidente.</li>
+        <li>Cualquier contenido ilegal según las leyes de Costa Rica.</li>
+      </ul>
+    </div>
+
+    <div class="legal-block">
+      <h2>5. Propiedad del contenido</h2>
+      <p>Conservas los derechos sobre el contenido que publicas en Sigilo. Al publicarlo, nos otorgas una licencia no exclusiva y gratuita para mostrarlo dentro de la plataforma. No reclamamos propiedad sobre tu trabajo.</p>
+    </div>
+
+    <div class="legal-block">
+      <h2>6. Moderación y sanciones</h2>
+      <p>Nos reservamos el derecho de eliminar contenido o suspender cuentas que violen estos términos, sin previo aviso en casos graves. Las decisiones de moderación son tomadas de buena fe para mantener la comunidad segura.</p>
+    </div>
+
+    <div class="legal-block">
+      <h2>7. Disponibilidad del servicio</h2>
+      <p>Sigilo se ofrece "tal cual" y sin garantías de disponibilidad continua. Podemos interrumpir, modificar o discontinuar la plataforma en cualquier momento. No somos responsables por pérdida de datos en caso de falla técnica, aunque hacemos nuestro mejor esfuerzo para protegerlos.</p>
+    </div>
+
+    <div class="legal-block">
+      <h2>8. Limitación de responsabilidad</h2>
+      <p>Sigilo no se responsabiliza por el contenido publicado por los usuarios, ni por daños derivados del uso de la plataforma. Eres responsable de tus acciones dentro de ella.</p>
+    </div>
+
+    <div class="legal-block">
+      <h2>9. Cambios a estos términos</h2>
+      <p>Podemos actualizar estos términos ocasionalmente. Te notificaremos de cambios significativos. El uso continuado de Sigilo tras los cambios implica tu aceptación.</p>
+    </div>
+
+    <div class="legal-block">
+      <h2>10. Legislación aplicable</h2>
+      <p>Estos términos se rigen por las leyes de la República de Costa Rica, incluyendo la Ley 8968 de Protección de la Persona frente al Tratamiento de sus Datos Personales.</p>
+    </div>
+
+    <div class="contact-box">
+      <p>¿Preguntas sobre estos términos? Escríbenos a: <a href="mailto:contacto@sigilo.app">contacto@sigilo.app</a></p>
+    </div>
+  </div>
+</main>
+
+<footer>✦ sigilo &nbsp;·&nbsp; Creado por <b>Sage Aksnes / @blomdoll</b></footer>
+
+<script>
+  function showTab(id, btn) {
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('on'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('on'));
+    document.getElementById('tab-' + id).classList.add('on');
+    btn.classList.add('on');
+  }
+</script>
+</body>
+</html>
