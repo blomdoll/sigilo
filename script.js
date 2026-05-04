@@ -944,7 +944,7 @@ function rpost(p) {
     </div>
     <div class="pcontent">${esc(p.body)}</div>
     <div class="pacts">
-      <button class="abtn${liked?' liked':''}" onclick="tlike('${p.id}')">♡ ${likes.length}</button>
+      <button class="abtn like-btn${liked?' liked':''}" onclick="tlike('${p.id}')"><i class="${liked?'fi fi-sr-heart':'fi fi-rr-heart'}"></i> ${likes.length}</button>
       <button class="abtn" onclick="tcmt('${p.id}')">◌ ${cmts.length}</button>
       <button class="abtn${isSaved?' sav':''}" onclick="tsave('${p.id}')">◈ ${isSaved?'guardado':'guardar'}</button>
       <button class="abtn copy-btn" onclick="copyPost('${p.id}')" title="copiar texto">⎘ copiar</button>
@@ -1171,10 +1171,18 @@ async function tlike(id) {
   // Patch solo el botón de like sin re-render completo
   const cid = safeId(id);
   const btn = document.querySelector(`#post-${cid} .abtn.liked, #post-${cid} .abtn:first-child`);
-  const likeBtn = document.querySelector(`#post-${cid} .pacts .abtn`);
+  const likeBtn = document.querySelector(`#post-${cid} .pacts .like-btn`);
   if (likeBtn) {
-    likeBtn.textContent = `♡ ${p.likes.length}`;
-    likeBtn.className = `abtn${p.likes.includes(S.me.id) ? ' liked' : ''}`;
+    const isNowLiked = p.likes.includes(S.me.id);
+    const icon = likeBtn.querySelector('i');
+    if (icon) icon.className = isNowLiked ? 'fi fi-sr-heart' : 'fi fi-rr-heart';
+    likeBtn.childNodes[likeBtn.childNodes.length - 1].textContent = ' ' + p.likes.length;
+    likeBtn.className = `abtn like-btn${isNowLiked ? ' liked' : ''}`;
+    // Animación pop al dar like
+    if (isNowLiked) {
+      likeBtn.classList.add('pop');
+      setTimeout(() => likeBtn.classList.remove('pop'), 260);
+    }
   }
   const {error}=await db.from('posts').update({likes:p.likes}).eq('id',id);
   if(error) { toast('Error al dar like'); render(); }
