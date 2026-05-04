@@ -161,8 +161,11 @@ main{flex:1;padding:1.25rem;max-width:660px;margin:0 auto;width:100%;}
   letter-spacing:1px;line-height:1;
 }
 .dotsbtn:hover{background:var(--w4);color:var(--w2);}
+.dotsbtn.open{background:var(--w4);color:var(--w2);}
 .pmenu{
-  position:fixed;
+  position:absolute;
+  top:calc(100% + 4px);
+  right:0;
   background:var(--surface);border:1px solid var(--bd);
   border-radius:var(--r2);box-shadow:0 4px 14px rgba(44,24,16,.1);
   min-width:170px;z-index:9999;
@@ -692,8 +695,7 @@ header { position: relative; }
   }
 
   .mob-nav-btn:hover,
-  .mob-nav-btn.ac
-tive { color: var(--w1); }
+  .mob-nav-btn.active { color: var(--w1); }
 
   /* ---- Mobile search panel — rediseñado ---- */
   .mob-search-panel {
