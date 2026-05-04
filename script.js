@@ -1291,13 +1291,12 @@ function validateLogin() {
 }
 
 function validateRegister() {
-  const name = document.getElementById('rn').value.trim();
   const user = document.getElementById('ru').value.trim();
   const email = document.getElementById('re').value.trim();
   const pw = document.getElementById('rp').value;
   const err = document.getElementById('ree');
-  if (!name) { err.textContent = 'ingresa tu nombre'; return false; }
   if (!user) { err.textContent = 'elige un nombre de usuario'; return false; }
+  if (user.length < 3) { err.textContent = 'el nombre de usuario debe tener al menos 3 caracteres'; return false; }
   if (!email || !email.includes('@')) { err.textContent = 'correo invalido'; return false; }
   if (pw.length < 6) { err.textContent = 'la contraseña debe tener al menos 6 caracteres'; return false; }
   err.textContent = '';
@@ -1322,7 +1321,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') window.login(); });
   });
-  ['rn','ru','re','rp'].forEach(id => {
+  ['ru','re','rp'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') window.register(); });
   });
