@@ -103,11 +103,20 @@ async function register() {
   const email = document.getElementById('re').value.trim();
   const password = document.getElementById('rp').value;
   const username = document.getElementById('ru').value.trim();
+  const errEl = document.getElementById('ree');
+  errEl.textContent = '';
+
+  if (!username) { errEl.textContent = 'El nombre de usuario es obligatorio.'; return; }
+  if (username.length < 3) { errEl.textContent = 'El nombre de usuario debe tener al menos 3 caracteres.'; return; }
+  if (!email) { errEl.textContent = 'El correo electrónico es obligatorio.'; return; }
+  if (!password) { errEl.textContent = 'La contraseña es obligatoria.'; return; }
+  if (password.length < 6) { errEl.textContent = 'La contraseña debe tener al menos 6 caracteres.'; return; }
+
   const btn = document.querySelector('#rf .btn-fill');
   if (btn) { btn.textContent = 'creando cuenta...'; btn.disabled = true; }
   const { data, error } = await db.auth.signUp({ email, password, options: { data: { display_name: username } } });
   if (btn) { btn.textContent = 'Crear cuenta'; btn.disabled = false; }
-  if (error) { document.getElementById('ree').textContent = error.message; return; }
+  if (error) { errEl.textContent = error.message; return; }
   // Crear fila en profiles para que el usuario sea buscable desde el primer momento
   if (data.user) {
     try {
