@@ -160,38 +160,64 @@ async function openFollowList(uid, type) {
   renderFollowListModal();
 
   try {
+    // Intentar join directo (sin nombre de FK hardcodeado)
     let data;
     if (type === 'followers') {
       const res = await db.from('follows')
-        .select('follower_id, profiles!follows_follower_id_fkey(id, username, display_name, avatar_url)')
+        .select('follower_id, profiles(id, username, display_name, avatar_url)')
         .eq('following_id', uid);
-      data = (res.data || []).map(r => r.profiles).filter(Boolean);
+      if (!res.error && res.data) {
+        data = res.data.map(r => r.profiles).filter(Boolean);
+      }
     } else {
       const res = await db.from('follows')
-        .select('following_id, profiles!follows_following_id_fkey(id, username, display_name, avatar_url)')
+        .select('following_id, profiles(id, username, display_name, avatar_url)')
         .eq('follower_id', uid);
-      data = (res.data || []).map(r => r.profiles).filter(Boolean);
-    }
-    S.followListModal.list = data;
-  } catch(e) {
-    // Fallback sin join de FK
-    try {
-      const col       = type === 'followers' ? 'follower_id'  : 'following_id';
-      const filterCol = type === 'followers' ? 'following_id' : 'follower_id';
-      const { data: followData } = await db.from('follows').select(col).eq(filterCol, uid);
-      const ids = (followData || []).map(r => r[col]);
-      if (ids.length === 0) {
-        S.followListModal.list = [];
-      } else {
-        const { data: profileData } = await db.from('profiles')
-          .select('id, username, display_name, avatar_url')
-          .in('id', ids);
-        S.followListModal.list = profileData || [];
+      if (!res.error && res.data) {
+        data = res.data.map(r => r.profiles).filter(Boolean);
       }
-    } catch(e2) {
-      S.followListModal.list = [];
     }
+
+    // Si el join funcionó, usar esos datos
+    if (data) {
+      S.followListModal.list = data;
+      renderFollowListModal();
+      return;
+    }
+  } catch(e) { /* continuar al fallback */ }
+
+  // Fallback confiable: dos queries separados
+  try {
+    const idCol    = type === 'followers' ? 'follower_id'  : 'following_id';
+    const filterCol = type === 'followers' ? 'following_id' : 'follower_id';
+    const { data: followData, error: e1 } = await db
+      .from('follows')
+      .select(idCol)
+      .eq(filterCol, uid);
+
+    if (e1 || !followData) {
+      S.followListModal.list = [];
+      renderFollowListModal();
+      return;
+    }
+
+    const ids = followData.map(r => r[idCol]).filter(Boolean);
+    if (ids.length === 0) {
+      S.followListModal.list = [];
+      renderFollowListModal();
+      return;
+    }
+
+    const { data: profileData } = await db
+      .from('profiles')
+      .select('id, username, display_name, avatar_url')
+      .in('id', ids);
+
+    S.followListModal.list = profileData || [];
+  } catch(e2) {
+    S.followListModal.list = [];
   }
+
   renderFollowListModal();
 }
 
