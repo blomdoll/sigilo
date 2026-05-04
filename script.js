@@ -35,7 +35,7 @@ const S = {
   theme: 'durazno', // tema activo
 };
 
-const CATS = ['todos', 'decoraciones', 'letras', 'simbolos', 'biografias', 'usernames', 'nombres'];
+const CATS = ['todos', 'decoraciones', 'letras', 'símbolos', 'biografías', 'usernames', 'nombres'];
 const MAX_CHARS = 500;
 const uid = () => 'x' + Math.random().toString(36).slice(2);
 
@@ -270,7 +270,7 @@ async function register() {
     boot();
   } else {
     // Supabase devuelve user=null cuando la confirmación de correo está activa
-    toast('Cuenta creada. Revisa tu correo para confirmar y luego inicia sesión.');
+    toast('¡Cuenta creada! Revisa tu correo para confirmar y luego inicia sesión.');
     stab('login');
   }
 }
@@ -333,7 +333,7 @@ function boot() {
     const sk = `<div class="skeleton-card"><div class="sk-head"><div class="sk-line sk-avatar"></div><div class="sk-meta"><div class="sk-line short"></div><div class="sk-line tiny"></div></div></div><div class="sk-line full"></div><div class="sk-line med"></div></div>`;
     mc.innerHTML = `
       <div class="ftitle">inicio</div>
-      <div class="fsub">comparte decoraciones, letras, simbolos y mas</div>
+      <div class="fsub">comparte decoraciones, letras, símbolos y más</div>
       ${sk.repeat(4)}`;
   }
   fetchPosts();
@@ -392,7 +392,7 @@ async function fetchPosts(reset = true) {
     // Mostrar error visible al usuario si el feed está vacío
     const mc = document.getElementById('mc');
     if (mc && S.posts.length === 0) {
-      mc.innerHTML = `<div class="empty"><div class="ei">⚠️</div><div class="el">no se pudo cargar el feed. revisa tu conexión e intenta de nuevo.<br><br><button class="load-more-btn" onclick="fetchPosts()">reintentar</button></div></div>`;
+      mc.innerHTML = `<div class="empty"><div class="ei">⚠️</div><div class="el">no se pudo cargar el feed. ¡revisa tu conexión e intenta de nuevo!<br><br><button class="load-more-btn" onclick="fetchPosts()">reintentar</button></div></div>`;
     }
     return;
   }
@@ -429,7 +429,7 @@ async function loadMore() {
   
   await fetchPosts(false); // Llamamos con reset=false para que sume al offset
   
-  if (btn) { btn.textContent = 'cargar mas'; btn.disabled = false; }
+  if (btn) { btn.textContent = 'cargar más'; btn.disabled = false; }
 }
 
 async function logout() {
@@ -554,13 +554,13 @@ function renderNotifPanel() {
   }
   bd.style.display = 'block';
   const items = S.notifs.length === 0
-    ? `<div class="s-empty" style="padding:1.2rem .6rem">sin notificaciones aun</div>`
+    ? `<div class="s-empty" style="padding:1.2rem .6rem">sin notificaciones aún</div>`
     : S.notifs.slice(0,20).map(n => `
       <div class="notif-row" onclick="goNotif('${n.postId}')">
         <span class="notif-icon">${n.type==='like'?'♡':'◌'}</span>
         <div class="notif-body">
           <span class="notif-name">${esc(n.fromName)}</span>
-          ${n.type==='like'?' le dio like a tu publicacion':' comento en tu publicacion'}
+          ${n.type==='like'?' le dio like a tu publicación':' comentó en tu publicación'}
           ${n.postBody?`<div class="notif-preview">${esc(n.postBody)}</div>`:''}
         </div>
         <span class="notif-time" data-ts="${n.ts}">${ago(n.ts)}</span>
@@ -634,7 +634,7 @@ async function assignToFolder(postId, folderId) {
   p.folder_id = newFolder;
   if (newFolder) p.col = true;
   try { await db.from('posts').update({ folder_id: newFolder, col: p.col }).eq('id', postId); } catch(e) {}
-  S.folderPostModal = null; toast(newFolder ? 'anadido a carpeta' : 'eliminado de carpeta'); render();
+  S.folderPostModal = null; toast(newFolder ? 'añadido a carpeta' : 'eliminado de carpeta'); render();
 }
 
 function openFolderPicker(postId) { S.folderPostModal = isNaN(postId)?postId:Number(postId); S.menu=null; render(); }
@@ -792,9 +792,9 @@ function renderFolderPickerModal() {
   const myFolders = S.folders.filter(f => f.user_id === S.me.id);
   el.innerHTML = `<div class="mov" onclick="if(event.target===this)closeFolderPicker()">
     <div class="mdl">
-      <div class="mdlt">Guardar en carpeta</div>
+      <div class="mdlt">guardar en carpeta</div>
       ${myFolders.length===0
-        ? `<div class="empty"><div class="ei">📂</div><div class="el">aun no tienes carpetas. Crea una desde colecciones.</div></div>`
+        ? `<div class="empty"><div class="ei">📂</div><div class="el">Aún no tienes carpetas. Crea una desde colecciones.</div></div>`
         : myFolders.map(f => {
             const active = post && post.folder_id===f.id;
             return `<button class="folder-pick-btn${active?' active':''}" onclick="assignToFolder(${S.folderPostModal},'${f.id}')">
@@ -817,7 +817,7 @@ function renderFolderFormModal() {
   const val = folder ? esc(folder.name) : '';
   el.innerHTML = `<div class="mov" onclick="if(event.target===this)closeFolderForm()">
     <div class="mdl">
-      <div class="mdlt">${isRename?'Renombrar carpeta':'Nueva carpeta'}</div>
+      <div class="mdlt">${isRename?'renombrar carpeta':'nueva carpeta'}</div>
       <div class="field">
         <label>nombre de la carpeta</label>
         <input id="folderNameInput" value="${val}" placeholder="ej. poemas, usernames bonitos..." maxlength="40"/>
@@ -847,9 +847,9 @@ function renderEditModal() {
   if (!p) { el.innerHTML=''; return; }
   el.innerHTML = `<div class="mov" onclick="if(event.target===this)closeEditPost()">
     <div class="mdl">
-      <div class="mdlt">Editar publicacion</div>
+      <div class="mdlt">editar publicación</div>
       <div class="field">
-        <label>Categoria</label>
+        <label>categoría</label>
         <select class="csel" id="edit-cat" style="width:100%;padding:.55rem .75rem">${CATS.slice(1).map(c=>`<option${p.category===c?' selected':''}>${c}</option>`).join('')}</select>
       </div>
       <div class="field">
@@ -879,13 +879,13 @@ async function saveEditPost(id) {
   id = isNaN(id)?id:Number(id);
   const body = document.getElementById('edit-body')?.value?.trim();
   const category = document.getElementById('edit-cat')?.value;
-  if (!body) return toast('el contenido no puede estar vacio');
-  if (body.length > MAX_CHARS) return toast('maximo '+MAX_CHARS+' caracteres');
+  if (!body) return toast('el contenido no puede estar vacío');
+  if (body.length > MAX_CHARS) return toast('máximo '+MAX_CHARS+' caracteres');
   const { error } = await db.from('posts').update({ body, category }).eq('id', id);
   if (error) return toast('Error al guardar');
   const p = S.posts.find(x => x.id === id);
   if (p) { p.body = body; p.category = category; }
-  S.editModal = null; toast('publicacion editada'); render();
+  S.editModal = null; toast('publicación editada'); render();
 }
 
 // --- FEED ---
@@ -894,7 +894,7 @@ function rfeed() {
   const composeCat = S.composeCat || CATS[1]; // default primera categoría
   return `
   <div class="ftitle">inicio</div>
-  <div class="fsub">comparte decoraciones, letras, simbolos y mas</div>
+  <div class="fsub">comparte decoraciones, letras, símbolos y más</div>
   <div class="ccard">
     <div class="ctop">${avEl(S.me)}<textarea class="ctxt" id="ct" placeholder="comparte algo bonito..." maxlength="${MAX_CHARS}"></textarea></div>
     <div style="display:flex;justify-content:flex-end;padding:.2rem 0 0">
@@ -909,7 +909,7 @@ function rfeed() {
   </div>
   <div class="cats">${CATS.map(c=>`<button class="catb${S.cat===c?' on':''}" onclick="setcat('${c}')">${c}</button>`).join('')}</div>
   ${posts.length===0
-    ? `<div class="empty"><div class="ei">🌸</div><div class="el">todavia no hay publicaciones aqui — se el primero ✦</div></div>`
+    ? `<div class="empty"><div class="ei">🌸</div><div class="el">todavía no hay publicaciones aquí — sé el primero ✦</div></div>`
     : posts.map(rpost).join('') + `<div id="scroll-sentinel" style="height:1px;margin:1rem 0"></div>`
   }`;
 }
@@ -1004,7 +1004,7 @@ function rprofile() {
     <input type="file" id="avup" accept="image/*" style="display:none" onchange="havatar(event)"/>
     <div class="pinfo">
       <div class="pname">${esc(user.user_metadata?.display_name || user.display_name || user.username || user.name || user.email)}</div>
-      <div class="pbio">${esc(user.user_metadata?.bio || user.bio || 'sin biografia aun')}</div>
+      <div class="pbio">${esc(user.user_metadata?.bio || user.bio || 'sin biografía aún')}</div>
       ${own ? `<button class="editbtn" onclick="openmod()">editar perfil</button>` : ''}
     </div>
     <div class="ptabs">
@@ -1012,15 +1012,15 @@ function rprofile() {
       <button class="ptab${tab === 'col' ? ' on' : ''}" onclick="stptab('col')">colecciones</button>
       ${own ? `<button class="ptab${tab === 'saved' ? ' on' : ''}" onclick="stptab('saved')">guardados</button>` : ''}
     </div>
-    ${tab === 'posts' ? (myp.length ? myp.map(rpost).join('') : `<div class="empty"><div class="el">aun no hay publicaciones</div></div>`) : ''}
-    ${tab === 'saved' ? (svd.length ? svd.map(rpost).join('') : `<div class="empty"><div class="el">aun no guardaste nada</div></div>`) : ''}
+    ${tab === 'posts' ? (myp.length ? myp.map(rpost).join('') : `<div class="empty"><div class="el">aún no hay publicaciones</div></div>`) : ''}
+    ${tab === 'saved' ? (svd.length ? svd.map(rpost).join('') : `<div class="empty"><div class="el">aún no guardaste nada</div></div>`) : ''}
     ${tab === 'col' ? renderCollections(userFolders, col, own) : ''}
   </div>
   ${S.modal ? `<div class="mov" onclick="mclose(event)">
     <div class="mdl">
-      <div class="mdlt">Editar perfil</div>
+      <div class="mdlt">editar perfil</div>
       <div class="field"><label>Nombre</label><input id="en" value="${esc(S.me.user_metadata?.display_name || S.me.name || '')}"/></div>
-      <div class="field"><label>Biografia</label><textarea id="eb" placeholder="cuentanos de ti...">${esc(S.me.user_metadata?.bio || S.me.bio || '')}</textarea></div>
+      <div class="field"><label>Biografía</label><textarea id="eb" placeholder="cuéntanos de ti...">${esc(S.me.user_metadata?.bio || S.me.bio || '')}</textarea></div>
       <div class="macts">
         <button class="cancelbtn" onclick="closemod()">cancelar</button>
         <button class="savebtn" onclick="savemod()">guardar</button>
@@ -1034,7 +1034,7 @@ function renderCollections(userFolders, col, own) {
   let html = '';
   if (own) html += `<div class="folder-toolbar"><button class="folder-new-btn" onclick="openCreateFolder()">+ nueva carpeta</button></div>`;
   if (col.length===0 && userFolders.length===0) {
-    return html + `<div class="empty"><div class="ei">📂</div><div class="el">${own?'usa el menu ... de tus publicaciones para guardar en colecciones':'este usuario no tiene colecciones aun'}</div></div>`;
+    return html + `<div class="empty"><div class="ei">📂</div><div class="el">${own?'usa el menú ··· de tus publicaciones para guardar en colecciónes':'este usuario no tiene colecciones aún'}</div></div>`;
   }
   if (userFolders.length > 0) {
     html += `<div class="folders-grid">`;
@@ -1048,12 +1048,12 @@ function renderCollections(userFolders, col, own) {
           <span class="folder-count">${fPosts.length}</span>
           ${own?`<div class="folder-actions" onclick="event.stopPropagation()">
             <button class="folder-act-btn" onclick="openRenameFolder('${f.id}')" title="renombrar">✎</button>
-            <button class="folder-act-btn del" onclick="confirmAction('Eliminar la carpeta?',()=>deleteFolder('${f.id}'))" title="eliminar">✕</button>
+            <button class="folder-act-btn del" onclick="confirmAction('¿Eliminar la carpeta?',()=>deleteFolder('${f.id}'))" title="eliminar">✕</button>
           </div>`:''}
           <span class="folder-chevron">${isActive?'▲':'▼'}</span>
         </div>
         ${isActive?`<div class="folder-posts">
-          ${fPosts.length===0?`<div class="empty"><div class="el">esta carpeta esta vacia</div></div>`:fPosts.map(rpost).join('')}
+          ${fPosts.length===0?`<div class="empty"><div class="el">esta carpeta está vacía</div></div>`:fPosts.map(rpost).join('')}
         </div>`:''}
       </div>`;
     }
@@ -1096,9 +1096,9 @@ function renderPostMenu() {
   const { top, right } = S.menuPos;
   el.innerHTML = `<div class="pmenu" style="position:fixed;top:${top}px;right:${right}px;z-index:9999;min-width:170px">
     <button class="mi" onclick="openEditPost('${p.id}')">✎ editar</button>
-    <button class="mi" onclick="tocol('${p.id}')">⊞ ${p.col?'quitar de coleccion':'guardar en coleccion'}</button>
+    <button class="mi" onclick="tocol('${p.id}')">⊞ ${p.col?'quitar de colección':'guardar en colección'}</button>
     ${p.col?`<button class="mi" onclick="openFolderPicker('${p.id}')">📁 ${p.folder_id?'mover de carpeta':'poner en carpeta'}</button>`:''}
-    <button class="mi del" onclick="confirmAction('Eliminar esta publicacion? No se puede deshacer.',()=>dpost(${p.id}))">✕ eliminar</button>
+    <button class="mi del" onclick="confirmAction('¿Eliminar esta publicación? No se puede deshacer.',()=>dpost(${p.id}))">✕ eliminar</button>
   </div>`;
 }
 
@@ -1120,7 +1120,7 @@ async function post() {
   const txt = document.getElementById('ct').value.trim();
   const cat = S.composeCat || CATS[1];
   if (!txt) return toast('escribe algo primero');
-  if (txt.length > MAX_CHARS) return toast('maximo '+MAX_CHARS+' caracteres');
+  if (txt.length > MAX_CHARS) return toast('máximo '+MAX_CHARS+' caracteres');
   const btn = document.querySelector('.pbtn');
   if (btn) { btn.textContent='publicando...'; btn.disabled=true; }
   const { data, error } = await db.from('posts').insert([{ body:txt, category:cat, user_id:S.me.id, username:S.me.user_metadata?.display_name||S.me.email, author_av:S.me.user_metadata?.avatar_url||null }]).select();
@@ -1216,15 +1216,15 @@ async function tocol(id) {
   const card = document.getElementById('post-' + cid);
   if (card) { const menu = card.querySelector('.pmenu'); if (menu) menu.remove(); }
   const {error}=await db.from('posts').update({col:p.col,folder_id:p.folder_id||null}).eq('id',id);
-  if(error) toast('Error al actualizar coleccion');
-  else { toast(p.col?'anadido a coleccion':'eliminado de coleccion'); }
+  if(error) toast('Error al actualizar colección');
+  else { toast(p.col?'añadido a colección':'eliminado de colección'); }
 }
 
 async function dpost(id) {
   id=isNaN(id)?id:Number(id);
   const {error}=await db.from('posts').delete().eq('id',id);
   if(error) toast('Error al eliminar');
-  else { S.posts=S.posts.filter(x=>x.id!==id); S.menu=null; toast('publicacion eliminada'); render(); }
+  else { S.posts=S.posts.filter(x=>x.id!==id); S.menu=null; toast('publicación eliminada'); render(); }
 }
 
 function tcmt(id) {
@@ -1453,7 +1453,7 @@ function validateLogin() {
   const pw = document.getElementById('lp').value;
   const err = document.getElementById('le');
   if (!email) { err.textContent = 'ingresa tu correo'; return false; }
-  if (!email.includes('@')) { err.textContent = 'correo invalido'; return false; }
+  if (!email.includes('@')) { err.textContent = 'correo inválido'; return false; }
   if (!pw) { err.textContent = 'ingresa tu contraseña'; return false; }
   err.textContent = '';
   return true;
@@ -1466,7 +1466,7 @@ function validateRegister() {
   const err = document.getElementById('ree');
   if (!user) { err.textContent = 'elige un nombre de usuario'; return false; }
   if (user.length < 3) { err.textContent = 'el nombre de usuario debe tener al menos 3 caracteres'; return false; }
-  if (!email || !email.includes('@')) { err.textContent = 'correo invalido'; return false; }
+  if (!email || !email.includes('@')) { err.textContent = 'correo inválido'; return false; }
   if (pw.length < 6) { err.textContent = 'la contraseña debe tener al menos 6 caracteres'; return false; }
   err.textContent = '';
   return true;
