@@ -60,25 +60,55 @@ header{
   padding:.75rem 1.25rem;display:flex;align-items:center;
   justify-content:space-between;position:sticky;top:0;z-index:50;
 }
-.hlogo{font-family:var(--fd);font-size:1.35rem;color:var(--w1);cursor:pointer;}
-.hnav{display:flex;gap:.4rem;align-items:center;}
+.hlogo{font-family:var(--fd);font-size:1.35rem;color:var(--w1);cursor:pointer;flex-shrink:0;}
+
+/* Nav wrapper: logo left, main center, actions right */
+.hnav{
+  display:flex;
+  align-items:center;
+  gap:1rem;
+  flex:1;
+  justify-content:flex-end;
+}
+.hnav-main{
+  display:flex;
+  align-items:center;
+  gap:.2rem;
+  background:var(--s2);
+  border:1px solid var(--bd);
+  border-radius:var(--r);
+  padding:.28rem .32rem;
+}
+.hnav-actions{
+  display:flex;
+  align-items:center;
+  gap:.25rem;
+}
+.hnav-divider{
+  width:1px;height:20px;
+  background:var(--bd);
+  margin:0 .2rem;
+  flex-shrink:0;
+}
 
 /* nav buttons */
 .nbtn{
-  padding:.45rem .85rem;border-radius:var(--r2);
-  background:transparent;color:var(--tx2);font-size:.82rem;
+  padding:.42rem .9rem;border-radius:8px;
+  background:transparent;color:var(--tx2);font-size:.81rem;
+  letter-spacing:.01em;
 }
-.nbtn:hover,.nbtn.on{background:var(--w4);color:var(--w2);}
+.nbtn:hover{background:var(--w4);color:var(--w2);}
+.nbtn.on{background:var(--surface);color:var(--w1);box-shadow:0 1px 4px rgba(44,24,16,.1);}
 .nlog{
   width:34px;height:34px;border-radius:50%;
-  background:transparent;color:var(--tx3);font-size:.95rem;
+  background:transparent;color:var(--tx3);
 }
 .nlog:hover{background:var(--w4);color:var(--w2);}
 
 /* logout button */
 .nlog-out{
   display:inline-flex;align-items:center;gap:.38rem;
-  padding:.4rem .8rem;border-radius:var(--r2);
+  padding:.4rem .82rem;border-radius:var(--r2);
   background:transparent;
   color:var(--tx3);
   font-size:.78rem;
