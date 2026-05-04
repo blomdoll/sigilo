@@ -861,7 +861,7 @@ function tmenu(id,e) {
 document.addEventListener('click', e => {
   if (S.menu && !e.target.closest('.mwrap')) { S.menu=null; render(); }
   if (S.searchOpen && !e.target.closest('#searchOverlay') && !e.target.closest('#ns')) toggleSearch();
-  if (S.notifOpen && !e.target.closest('#notifPanel') && !e.target.closest('#notif-btn')) { S.notifOpen=false; renderNotifPanel(); }
+  if (S.notifOpen && !e.target.closest('#notifPanel') && !e.target.closest('#notif-btn') && !e.target.closest('#mob-notif')) { S.notifOpen=false; renderNotifPanel(); }
 });
 
 async function post() {
