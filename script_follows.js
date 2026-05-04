@@ -435,6 +435,7 @@ window.rprofile = function() {
 // ----------------------------------------------------------------
 const _origRfeed = rfeed;
 window.rfeed = function() {
+  if (S.page === 'settings') return rsettings();
   return rfeedWithTabs();
 };
 
