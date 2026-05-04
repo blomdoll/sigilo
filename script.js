@@ -945,7 +945,7 @@ function rpost(p) {
     <div class="pcontent">${esc(p.body)}</div>
     <div class="pacts">
       <button class="abtn like-btn${liked?' liked':''}" onclick="tlike('${p.id}')"><i class="${liked?'fi fi-sr-heart':'fi fi-rr-heart'}"></i> ${likes.length}</button>
-      <button class="abtn comment-btn" onclick="tcmt('${p.id}')"><i class="fi fi-rr-comment-alt"></i> ${cmts.length}</button>
+      <button class="abtn comment-btn" onclick="tcmt('${p.id}')"><i class="fi fi-rr-comment"></i> ${cmts.length}</button>
       <button class="abtn${isSaved?' sav':''}" onclick="tsave('${p.id}')">◈ ${isSaved?'guardado':'guardar'}</button>
       <button class="abtn copy-btn" onclick="copyPost('${p.id}')" title="copiar texto">⎘ copiar</button>
     </div>
@@ -1273,7 +1273,7 @@ function tcmt(id) {
     </div>`).join('')}`;
   // Update comment count button
   const cmtBtn = card.querySelector('.pacts .comment-btn');
-  if (cmtBtn) cmtBtn.innerHTML = `<i class="fi fi-rr-comment-alt"></i> ${cmts.length}`;
+  if (cmtBtn) cmtBtn.innerHTML = `<i class="fi fi-rr-comment"></i> ${cmts.length}`;
   setTimeout(() => document.getElementById(cid)?.focus(), 30);
 }
 
@@ -1333,7 +1333,7 @@ async function scmt(id) {
       csec.appendChild(cmDiv);
       // Update comment count
       const cmtBtn = card?.querySelector('.pacts .comment-btn');
-      if (cmtBtn) cmtBtn.innerHTML = `<i class="fi fi-rr-comment-alt"></i> ${p.cmts.length}`;
+      if (cmtBtn) cmtBtn.innerHTML = `<i class="fi fi-rr-comment"></i> ${p.cmts.length}`;
     }
   }
 }
@@ -1359,7 +1359,7 @@ async function dcmt(postId, cmtId) {
     if (csec) {
       // Rebuildear la sección de comentarios (es la más simple y segura)
       const cmtBtn = card?.querySelector('.pacts .comment-btn');
-      if (cmtBtn) cmtBtn.innerHTML = `<i class="fi fi-rr-comment-alt"></i> ${nuevosComentarios.length}`;
+      if (cmtBtn) cmtBtn.innerHTML = `<i class="fi fi-rr-comment"></i> ${nuevosComentarios.length}`;
       const cmDivs = csec.querySelectorAll('.cm');
       // Encontrar y eliminar el div del comentario que contiene el botón pulsado
       cmDivs.forEach(div => {
