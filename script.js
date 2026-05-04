@@ -945,7 +945,7 @@ function rpost(p) {
     <div class="pcontent">${esc(p.body)}</div>
     <div class="pacts">
       <button class="abtn like-btn${liked?' liked':''}" onclick="tlike('${p.id}')"><i class="${liked?'fi fi-sr-heart':'fi fi-rr-heart'}"></i> ${likes.length}</button>
-      <button class="abtn" onclick="tcmt('${p.id}')">◌ ${cmts.length}</button>
+      <button class="abtn comment-btn" onclick="tcmt('${p.id}')"><i class="fi fi-rr-comment-alt"></i> ${cmts.length}</button>
       <button class="abtn${isSaved?' sav':''}" onclick="tsave('${p.id}')">◈ ${isSaved?'guardado':'guardar'}</button>
       <button class="abtn copy-btn" onclick="copyPost('${p.id}')" title="copiar texto">⎘ copiar</button>
     </div>
@@ -1272,8 +1272,8 @@ function tcmt(id) {
       </div>
     </div>`).join('')}`;
   // Update comment count button
-  const cmtBtn = [...card.querySelectorAll('.pacts .abtn')].find(b => b.textContent.includes('◌'));
-  if (cmtBtn) cmtBtn.textContent = `◌ ${cmts.length}`;
+  const cmtBtn = card.querySelector('.pacts .comment-btn');
+  if (cmtBtn) cmtBtn.innerHTML = `<i class="fi fi-rr-comment-alt"></i> ${cmts.length}`;
   setTimeout(() => document.getElementById(cid)?.focus(), 30);
 }
 
@@ -1332,8 +1332,8 @@ async function scmt(id) {
         </div>`;
       csec.appendChild(cmDiv);
       // Update comment count
-      const cmtBtn = [...(card?.querySelectorAll('.pacts .abtn')||[])].find(b => b.textContent.includes('◌'));
-      if (cmtBtn) cmtBtn.textContent = `◌ ${p.cmts.length}`;
+      const cmtBtn = card?.querySelector('.pacts .comment-btn');
+      if (cmtBtn) cmtBtn.innerHTML = `<i class="fi fi-rr-comment-alt"></i> ${p.cmts.length}`;
     }
   }
 }
@@ -1358,8 +1358,8 @@ async function dcmt(postId, cmtId) {
     const csec = card?.querySelector('.csec');
     if (csec) {
       // Rebuildear la sección de comentarios (es la más simple y segura)
-      const cmtBtn = [...(card?.querySelectorAll('.pacts .abtn')||[])].find(b => b.textContent.includes('◌'));
-      if (cmtBtn) cmtBtn.textContent = `◌ ${nuevosComentarios.length}`;
+      const cmtBtn = card?.querySelector('.pacts .comment-btn');
+      if (cmtBtn) cmtBtn.innerHTML = `<i class="fi fi-rr-comment-alt"></i> ${nuevosComentarios.length}`;
       const cmDivs = csec.querySelectorAll('.cm');
       // Encontrar y eliminar el div del comentario que contiene el botón pulsado
       cmDivs.forEach(div => {
