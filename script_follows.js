@@ -243,7 +243,7 @@ function renderFollowListModal() {
   if (loading) {
     bodyHtml = `<div class="follow-list-empty">cargando...</div>`;
   } else if (list.length === 0) {
-    bodyHtml = `<div class="follow-list-empty">aun no hay ${title} aqui</div>`;
+    bodyHtml = `<div class="follow-list-empty">aún no hay ${title} aquí</div>`;
   } else {
     bodyHtml = list.map(u => {
       const name = u.display_name || u.username || '?';
@@ -309,7 +309,7 @@ function rfeedWithTabs() {
   const composeCat = S.composeCat || CATS[1];
   const tabsHtml = `
   <div class="ftitle">inicio</div>
-  <div class="fsub">comparte decoraciones, letras, simbolos y mas</div>
+  <div class="fsub">comparte decoraciones, letras, símbolos y más</div>
   <div class="feed-tabs">
     <button class="feed-tab${S.followTab==='todos'?' on':''}" onclick="setFeedTab('todos')">\u2756 todos</button>
     <button class="feed-tab${S.followTab==='siguiendo'?' on':''}" onclick="setFeedTab('siguiendo')">siguiendo</button>
@@ -334,7 +334,7 @@ function rfeedWithTabs() {
     return tabsHtml + `
     <div class="cats">${CATS.map(c=>`<button class="catb${S.cat===c?' on':''}" onclick="setcat('${c}')">${c}</button>`).join('')}</div>
     ${posts.length===0
-      ? `<div class="empty"><div class="ei">\ud83c\udf38</div><div class="el">todavia no hay publicaciones aqui \u2014 se el primero \u2756</div></div>`
+      ? `<div class="empty"><div class="ei">\ud83c\udf38</div><div class="el">todavía no hay publicaciones aquí \u2014 sé el primero \u2756</div></div>`
       : posts.map(rpost).join('') + `<div id="scroll-sentinel" style="height:1px;margin:1rem 0"></div>`
     }`;
   }
@@ -344,8 +344,8 @@ function renderFollowingSection() {
   if (S.followingIds.size === 0) {
     return `<div class="feed-following-empty">
       <div class="fi-icon">\ud83c\udf3f</div>
-      <div>aun no sigues a nadie.</div>
-      <div style="margin-top:.5rem">busca usuarios con el icono \ud83d\udd0d o visita perfiles para seguirlos.</div>
+      <div>aún no sigues a nadie.</div>
+      <div style="margin-top:.5rem">busca usuarios con el ícono \ud83d\udd0d o visita perfiles para seguirlos.</div>
     </div>`;
   }
   if (!S.followingLoaded) {
@@ -355,7 +355,7 @@ function renderFollowingSection() {
   if (S.followingPosts.length === 0) {
     return `<div class="feed-following-empty">
       <div class="fi-icon">\ud83d\udceb</div>
-      <div>las personas que sigues no han publicado nada todavia.</div>
+      <div>las personas que sigues no han publicado nada todavía.</div>
     </div>`;
   }
   return S.followingPosts.map(rpost).join('');
@@ -472,10 +472,10 @@ window.renderNotifPanel = function() {
   bd.style.display = 'block';
 
   const items = S.notifs.length === 0
-    ? `<div class="s-empty" style="padding:1.2rem .6rem">sin notificaciones aun</div>`
+    ? `<div class="s-empty" style="padding:1.2rem .6rem">sin notificaciones aún</div>`
     : S.notifs.slice(0, 20).map(n => {
-        let icon = '\u2661', text = ' le dio like a tu publicacion';
-        if (n.type === 'comment') { icon = '\u25cc'; text = ' comento en tu publicacion'; }
+        let icon = '\u2661', text = ' le dio like a tu publicación';
+        if (n.type === 'comment') { icon = '\u25cc'; text = ' comentó en tu publicación'; }
         if (n.type === 'follow')  { icon = '\u2756'; text = ' empez\u00f3 a seguirte'; }
         const onclick = n.type === 'follow'
           ? `S.notifOpen=false;renderNotifPanel();vprof('${n.fromUid}')`
