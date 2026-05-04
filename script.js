@@ -113,7 +113,20 @@ async function register() {
   if (password.length < 6) { errEl.textContent = 'La contraseña debe tener al menos 6 caracteres.'; return; }
 
   const btn = document.querySelector('#rf .btn-fill');
-  if (btn) { btn.textContent = 'creando cuenta...'; btn.disabled = true; }
+  if (btn) { btn.textContent = 'verificando...'; btn.disabled = true; }
+
+  // Verificar que el username no esté en uso
+  const { data: existingUser } = await db.from('profiles')
+    .select('id')
+    .ilike('username', username)
+    .maybeSingle();
+  if (existingUser) {
+    errEl.textContent = 'Ese nombre de usuario ya está en uso. Elige otro.';
+    if (btn) { btn.textContent = 'Crear cuenta'; btn.disabled = false; }
+    return;
+  }
+
+  if (btn) { btn.textContent = 'creando cuenta...'; }
   const { data, error } = await db.auth.signUp({ email, password, options: { data: { display_name: username } } });
   if (btn) { btn.textContent = 'Crear cuenta'; btn.disabled = false; }
   if (error) { errEl.textContent = error.message; return; }
