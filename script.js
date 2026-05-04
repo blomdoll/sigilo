@@ -32,6 +32,7 @@ const S = {
   confirmModal: null,
   composeCat: null, // categoría seleccionada en compose (null = primera por defecto)
   loading: false, // guard para evitar fetchPosts simultáneos
+  theme: 'durazno', // tema activo
 };
 
 const CATS = ['todos', 'decoraciones', 'letras', 'simbolos', 'biografias', 'usernames', 'nombres'];
@@ -78,6 +79,130 @@ function renderConfirmModal() {
       </div>
     </div>
   </div>`;
+}
+
+// --- SISTEMA DE TEMAS ---
+const THEMES = [
+  {
+    id: 'durazno',
+    name: 'Durazno',
+    bg: '#FBF6F0', surface: '#FFF9F4', accent: '#C9785A', accent2: '#E8C5A8', tx: '#2C1810',
+  },
+  {
+    id: 'medianoche',
+    name: 'Medianoche',
+    bg: '#0F0F14', surface: '#16161E', accent: '#8B7CF8', accent2: '#2D2B4E', tx: '#E8E6FF',
+  },
+  {
+    id: 'bosque',
+    name: 'Bosque',
+    bg: '#F2F5EE', surface: '#F8FAF5', accent: '#5A8A5C', accent2: '#B8D4B9', tx: '#1A2E1B',
+  },
+  {
+    id: 'cielo',
+    name: 'Cielo',
+    bg: '#F0F5FB', surface: '#F8FAFE', accent: '#4A86C8', accent2: '#A8C8EE', tx: '#0E2040',
+  },
+  {
+    id: 'rosa',
+    name: 'Rosa',
+    bg: '#FDF0F5', surface: '#FFF5F8', accent: '#C45C80', accent2: '#F0B8CC', tx: '#3A0E22',
+  },
+  {
+    id: 'ambar',
+    name: 'Ámbar',
+    bg: '#FBF5E8', surface: '#FFFBF0', accent: '#C8880A', accent2: '#EED09A', tx: '#2C1C00',
+  },
+  {
+    id: 'pizarra',
+    name: 'Pizarra',
+    bg: '#F2F3F5', surface: '#FAFBFC', accent: '#5A6E8A', accent2: '#B0BED0', tx: '#0A1828',
+  },
+  {
+    id: 'nocturno',
+    name: 'Nocturno',
+    bg: '#130E0A', surface: '#1C1410', accent: '#D4956A', accent2: '#3A2618', tx: '#F0E8DE',
+  },
+];
+
+function applyTheme(themeId) {
+  S.theme = themeId;
+  document.documentElement.setAttribute('data-theme', themeId);
+  try { localStorage.setItem('sigilo_theme', themeId); } catch(e) {}
+}
+
+function loadSavedTheme() {
+  try {
+    const saved = localStorage.getItem('sigilo_theme');
+    if (saved && THEMES.find(t => t.id === saved)) {
+      applyTheme(saved);
+      return;
+    }
+  } catch(e) {}
+  applyTheme('durazno');
+}
+
+// Aplicar tema guardado inmediatamente
+loadSavedTheme();
+
+// --- NAVEGACIÓN A CONFIGURACIÓN ---
+function gosettings() {
+  S.page = 'settings'; S.menu = null;
+  renderPostMenu();
+  document.title = 'ajustes · sigilo';
+  // Actualizar nav
+  ['nf','np','nc'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.className = 'nbtn';
+  });
+  const nc = document.getElementById('nc');
+  if (nc) nc.className = 'nbtn on';
+  // Renderizar
+  const mc = document.getElementById('mc');
+  if (mc) mc.innerHTML = rsettings();
+  // Guardar estado
+  try { sessionStorage.setItem('sigilo_nav', JSON.stringify({ page: 'settings' })); } catch(e) {}
+}
+
+function rsettings() {
+  return `
+  <div class="settings-page">
+    <div class="settings-title">ajustes</div>
+    <div class="settings-sub">personaliza tu experiencia en sigilo</div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">✦ tema de color</div>
+      <div class="theme-grid">
+        ${THEMES.map(t => `
+          <div class="theme-card${S.theme === t.id ? ' active' : ''}" onclick="selectTheme('${t.id}')" title="${t.name}">
+            <div class="theme-preview" style="background:${t.bg}">
+              <div class="theme-preview-dot" style="background:${t.accent}"></div>
+              <div class="theme-preview-bar" style="background:${t.surface};border:1px solid ${t.accent2};width:75%"></div>
+              <div class="theme-preview-bar" style="background:${t.accent2};width:55%"></div>
+              <div class="theme-preview-bar" style="background:${t.accent};width:38%"></div>
+            </div>
+            <div class="theme-label" style="background:${t.surface};color:${t.tx}">
+              <span>${t.name}</span>
+              <span class="theme-check" style="color:${t.accent}">✓</span>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+
+function selectTheme(themeId) {
+  applyTheme(themeId);
+  // Re-render solo la grilla sin recargar toda la página
+  const grid = document.querySelector('.theme-grid');
+  if (grid) {
+    grid.querySelectorAll('.theme-card').forEach(card => {
+      const isActive = card.getAttribute('onclick') === `selectTheme('${themeId}')`;
+      card.classList.toggle('active', isActive);
+    });
+  }
+  toast('tema aplicado ✦');
 }
 
 // --- AUTH ---
@@ -186,6 +311,13 @@ function boot() {
       S.ptab = saved.ptab || 'posts';
       nav(); render();
       fetchPosts();
+      fetchFolders();
+      loadNotifs();
+      return;
+    }
+    if (saved && saved.page === 'settings') {
+      S.page = 'settings';
+      nav(); render();
       fetchFolders();
       loadNotifs();
       return;
@@ -570,8 +702,8 @@ function saveNavState() {
   try { sessionStorage.setItem('sigilo_nav', JSON.stringify({ page: S.page, puid: S.puid, ptab: S.ptab })); } catch(e) {}
 }
 
-function gofeed() { S.page='feed'; S.puid=null; S.menu=null; saveNavState(); document.title='inicio · sigilo'; nav(); render(); }
-function goprofile() { S.page='profile'; S.puid=S.me.id; S.ptab='posts'; S.menu=null; saveNavState(); document.title='perfil · sigilo'; nav(); render(); }
+function gofeed() { S.page='feed'; S.puid=null; S.menu=null; renderPostMenu(); saveNavState(); document.title='inicio · sigilo'; nav(); render(); }
+function goprofile() { S.page='profile'; S.puid=S.me.id; S.ptab='posts'; S.menu=null; renderPostMenu(); saveNavState(); document.title='perfil · sigilo'; nav(); render(); }
 async function vprof(id) {
   S.page='profile'; S.puid=id; S.ptab='posts'; S.menu=null; saveNavState(); document.title='perfil · sigilo'; nav();
   // Si no es nuestro propio perfil, intentar cargar datos desde profiles
@@ -590,8 +722,10 @@ async function vprof(id) {
 }
 
 function nav() {
-  ['nf','np'].forEach(id => { const el=document.getElementById(id); if(el) el.className='nbtn'; });
-  const el = document.getElementById(S.page==='feed'?'nf':'np'); if(el) el.className='nbtn on';
+  ['nf','np','nc'].forEach(id => { const el=document.getElementById(id); if(el) el.className='nbtn'; });
+  if (S.page === 'feed') { const el=document.getElementById('nf'); if(el) el.className='nbtn on'; }
+  else if (S.page === 'profile') { const el=document.getElementById('np'); if(el) el.className='nbtn on'; }
+  else if (S.page === 'settings') { const el=document.getElementById('nc'); if(el) el.className='nbtn on'; }
 }
 
 function avEl(user, big = false, canEdit = false) {
@@ -614,7 +748,10 @@ function avEl(user, big = false, canEdit = false) {
 
 function render() {
   const mc = document.getElementById('mc');
-  if (mc) mc.innerHTML = S.page==='feed' ? rfeed() : rprofile();
+  if (mc) {
+    if (S.page === 'settings') mc.innerHTML = rsettings();
+    else mc.innerHTML = S.page==='feed' ? rfeed() : rprofile();
+  }
   renderFolderPickerModal();
   renderFolderFormModal();
   renderEditModal();
@@ -1443,6 +1580,7 @@ window.openEditPost=openEditPost; window.closeEditPost=closeEditPost; window.sav
 window.toggleNotif=toggleNotif; window.goNotif=goNotif; window.clearNotifs=clearNotifs;
 window.confirmAction=confirmAction; window.renderConfirmModal=renderConfirmModal;
 window.togglePw=togglePw; window.renderPostMenu=renderPostMenu;
+window.gosettings=gosettings; window.selectTheme=selectTheme; window.rsettings=rsettings;
 
 showLoading();
 // Usar refreshSession en lugar de getSession para garantizar token válido y metadatos frescos
@@ -1460,11 +1598,11 @@ db.auth.refreshSession().then(({data, error})=>{
 // ======== MOBILE BOTTOM NAV ========
 
 function mobSetActive(tab) {
-  ['mob-home','mob-search','mob-notif','mob-profile'].forEach(id => {
+  ['mob-home','mob-search','mob-notif','mob-profile','mob-settings'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.remove('active');
   });
-  const map = { home:'mob-home', search:'mob-search', notif:'mob-notif', profile:'mob-profile' };
+  const map = { home:'mob-home', search:'mob-search', notif:'mob-notif', profile:'mob-profile', settings:'mob-settings' };
   const el = document.getElementById(map[tab]);
   if (el) el.classList.add('active');
 }
@@ -1490,7 +1628,9 @@ function mobCloseSearch() {
   const res = document.getElementById('mobSearchResults');
   if (res) res.innerHTML = '';
   // Restaurar activo según página actual
-  mobSetActive(S.page === 'feed' ? 'home' : 'profile');
+  if (S.page === 'feed') mobSetActive('home');
+  else if (S.page === 'settings') mobSetActive('settings');
+  else mobSetActive('profile');
 }
 
 let mobSearchTimeout = null;
@@ -1550,6 +1690,7 @@ window.nav = function() {
   // Sincronizar mob-nav active
   if (S.page === 'feed') mobSetActive('home');
   else if (S.page === 'profile') mobSetActive('profile');
+  else if (S.page === 'settings') mobSetActive('settings');
 };
 
 // Patch render() para inyectar botón logout en perfil
