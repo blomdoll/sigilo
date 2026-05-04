@@ -107,8 +107,25 @@ async function register() {
   if (btn) { btn.textContent = 'creando cuenta...'; btn.disabled = true; }
   const { data, error } = await db.auth.signUp({ email, password, options: { data: { display_name: username } } });
   if (btn) { btn.textContent = 'Crear cuenta'; btn.disabled = false; }
-  if (error) document.getElementById('ree').textContent = error.message;
-  else { toast('Cuenta creada! Revisa tu correo.'); S.me = data.user; boot(); }
+  if (error) { document.getElementById('ree').textContent = error.message; return; }
+  // Crear fila en profiles para que el usuario sea buscable desde el primer momento
+  if (data.user) {
+    try {
+      await db.from('profiles').upsert([{
+        id: data.user.id,
+        username,
+        display_name: username,
+        avatar_url: null,
+        bio: '',
+      }], { onConflict: 'id' });
+    } catch(e) { /* no bloquear el registro si falla */ }
+    S.me = data.user;
+    boot();
+  } else {
+    // Supabase devuelve user=null cuando la confirmación de correo está activa
+    toast('Cuenta creada. Revisa tu correo para confirmar y luego inicia sesión.');
+    stab('login');
+  }
 }
 
 function showLoading() {
@@ -501,36 +518,26 @@ async function searchUsers() {
   res.innerHTML = `<div class="s-empty">buscando...</div>`;
   clearTimeout(searchTimeout);
   searchTimeout = setTimeout(async () => {
-    const seen = new Set(), matches = [];
-    // Local cache
-    for (const p of S.posts) {
-      if (!seen.has(p.user_id)) {
-        const name = p.username || '';
-        if (name.toLowerCase().includes(q.toLowerCase())) {
-          seen.add(p.user_id);
-          matches.push({ id: p.user_id, username: name, av: p.author_av });
-        }
-      }
-    }
-    // DB search for users not in cache
     try {
-      const { data } = await db.from('posts').select('user_id,username,author_av').ilike('username', '%'+q+'%').limit(10);
-      if (data) {
-        for (const row of data) {
-          if (!seen.has(row.user_id)) {
-            seen.add(row.user_id);
-            matches.push({ id: row.user_id, username: row.username, av: row.author_av });
-          }
-        }
+      const { data, error } = await db.from('profiles')
+        .select('id,username,display_name,avatar_url')
+        .or(`username.ilike.%${q}%,display_name.ilike.%${q}%`)
+        .limit(10);
+      if (error || !data || data.length === 0) {
+        res.innerHTML = `<div class="s-empty">no se encontraron usuarios</div>`; return;
       }
-    } catch(e) {}
-
-    if (matches.length === 0) { res.innerHTML = `<div class="s-empty">no se encontraron usuarios</div>`; return; }
-    res.innerHTML = matches.slice(0,8).map(u => `
-      <div class="s-row" onclick="goSearchUser('${u.id}')">
-        ${u.av?`<div class="av"><img src="${esc(u.av)}" alt=""/></div>`:`<div class="av">${(u.username[0]||'?').toUpperCase()}</div>`}
-        <span class="s-name">${esc(u.username)}</span>
-      </div>`).join('');
+      res.innerHTML = data.map(u => {
+        const name = u.display_name || u.username || '?';
+        return `<div class="s-row" onclick="goSearchUser('${u.id}')">
+          ${u.avatar_url
+            ? `<div class="av"><img src="${esc(u.avatar_url)}" alt=""/></div>`
+            : `<div class="av">${(name[0]||'?').toUpperCase()}</div>`}
+          <span class="s-name">${esc(name)}</span>
+        </div>`;
+      }).join('');
+    } catch(e) {
+      res.innerHTML = `<div class="s-empty">error al buscar, intenta de nuevo</div>`;
+    }
   }, 300);
 }
 
@@ -543,7 +550,22 @@ function saveNavState() {
 
 function gofeed() { S.page='feed'; S.puid=null; S.menu=null; saveNavState(); document.title='inicio · sigilo'; nav(); render(); }
 function goprofile() { S.page='profile'; S.puid=S.me.id; S.ptab='posts'; S.menu=null; saveNavState(); document.title='perfil · sigilo'; nav(); render(); }
-function vprof(id) { S.page='profile'; S.puid=id; S.ptab='posts'; S.menu=null; saveNavState(); document.title='perfil · sigilo'; nav(); render(); }
+async function vprof(id) {
+  S.page='profile'; S.puid=id; S.ptab='posts'; S.menu=null; saveNavState(); document.title='perfil · sigilo'; nav();
+  // Si no es nuestro propio perfil, intentar cargar datos desde profiles
+  if (id !== S.me.id && !S.users.find(u => u.id === id)) {
+    try {
+      const { data } = await db.from('profiles').select('id,username,display_name,avatar_url,bio').eq('id', id).single();
+      if (data) {
+        // Guardar en S.users para no volver a fetchear
+        const existing = S.users.findIndex(u => u.id === id);
+        const profile = { id: data.id, username: data.display_name || data.username, avatar_url: data.avatar_url, bio: data.bio };
+        if (existing > -1) S.users[existing] = profile; else S.users.push(profile);
+      }
+    } catch(e) {}
+  }
+  render();
+}
 
 function nav() {
   ['nf','np'].forEach(id => { const el=document.getElementById(id); if(el) el.className='nbtn'; });
@@ -824,7 +846,7 @@ function rprofile() {
     </div>
     <input type="file" id="avup" accept="image/*" style="display:none" onchange="havatar(event)"/>
     <div class="pinfo">
-      <div class="pname">${esc(user.user_metadata?.display_name || user.username || user.name || user.email)}</div>
+      <div class="pname">${esc(user.user_metadata?.display_name || user.display_name || user.username || user.name || user.email)}</div>
       <div class="pbio">${esc(user.user_metadata?.bio || user.bio || 'sin biografia aun')}</div>
       ${own ? `<button class="editbtn" onclick="openmod()">editar perfil</button>` : ''}
     </div>
@@ -1190,6 +1212,8 @@ async function havatar(e) {
   // Guardar cleanUrl en Auth y BD; displayUrl solo en memoria local para esta sesión
   S.me.user_metadata.avatar_url=displayUrl;
   await db.from('posts').update({author_av:cleanUrl}).eq('user_id',S.me.id);
+  // Sincronizar avatar en profiles
+  try { await db.from('profiles').upsert([{ id: S.me.id, avatar_url: cleanUrl }], { onConflict: 'id' }); } catch(e) {}
   // Actualizar posts locales con displayUrl para que el cambio sea visible de inmediato
   S.posts.forEach(p=>{ if(p.user_id===S.me.id) p.author_av=displayUrl; });
   render(); toast('foto actualizada');
@@ -1204,7 +1228,14 @@ async function savemod() {
   if(!n) return;
   const {error}=await db.auth.updateUser({data:{display_name:n,bio:b}});
   if(error) toast('Error al guardar perfil');
-  else { S.me.user_metadata.display_name=n; S.me.user_metadata.bio=b; S.modal=false; render(); toast('perfil actualizado'); }
+  else {
+    S.me.user_metadata.display_name=n; S.me.user_metadata.bio=b;
+    // Sincronizar con tabla profiles para que la búsqueda refleje el nuevo nombre
+    try {
+      await db.from('profiles').upsert([{ id: S.me.id, username: n, display_name: n, bio: b }], { onConflict: 'id' });
+    } catch(e) {}
+    S.modal=false; render(); toast('perfil actualizado');
+  }
 }
 
 // --- TOGGLE PASSWORD VISIBILITY ---
@@ -1413,31 +1444,26 @@ async function mobSearchUsers() {
   res.innerHTML = `<div class="s-empty">buscando...</div>`;
   clearTimeout(mobSearchTimeout);
   mobSearchTimeout = setTimeout(async () => {
-    const seen = new Set(), matches = [];
-    for (const p of S.posts) {
-      if (!seen.has(p.user_id)) {
-        const name = p.username || '';
-        if (name.toLowerCase().includes(q.toLowerCase())) {
-          seen.add(p.user_id); matches.push({ id: p.user_id, username: name, av: p.author_av });
-        }
-      }
-    }
     try {
-      const { data } = await db.from('posts').select('user_id,username,author_av').ilike('username', '%'+q+'%').limit(10);
-      if (data) {
-        for (const row of data) {
-          if (!seen.has(row.user_id)) {
-            seen.add(row.user_id); matches.push({ id: row.user_id, username: row.username, av: row.author_av });
-          }
-        }
+      const { data, error } = await db.from('profiles')
+        .select('id,username,display_name,avatar_url')
+        .or(`username.ilike.%${q}%,display_name.ilike.%${q}%`)
+        .limit(10);
+      if (error || !data || data.length === 0) {
+        res.innerHTML = `<div class="s-empty">no se encontraron usuarios</div>`; return;
       }
-    } catch(e) {}
-    if (matches.length === 0) { res.innerHTML = `<div class="s-empty">no se encontraron usuarios</div>`; return; }
-    res.innerHTML = matches.slice(0,8).map(u => `
-      <div class="s-row" onclick="mobGoSearchUser('${u.id}')">
-        ${u.av?`<div class="av"><img src="${esc(u.av)}" alt=""/></div>`:`<div class="av">${(u.username[0]||'?').toUpperCase()}</div>`}
-        <span class="s-name">${esc(u.username)}</span>
-      </div>`).join('');
+      res.innerHTML = data.map(u => {
+        const name = u.display_name || u.username || '?';
+        return `<div class="s-row" onclick="mobGoSearchUser('${u.id}')">
+          ${u.avatar_url
+            ? `<div class="av"><img src="${esc(u.avatar_url)}" alt=""/></div>`
+            : `<div class="av">${(name[0]||'?').toUpperCase()}</div>`}
+          <span class="s-name">${esc(name)}</span>
+        </div>`;
+      }).join('');
+    } catch(e) {
+      res.innerHTML = `<div class="s-empty">error al buscar, intenta de nuevo</div>`;
+    }
   }, 300);
 }
 
