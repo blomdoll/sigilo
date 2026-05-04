@@ -621,6 +621,7 @@ function render() {
   renderNotifPanel();
   renderConfirmModal();
   renderNotifBadge();
+  renderPostMenu();
   attachTextareaResize();
   if (S.page === 'feed') setTimeout(setupInfiniteScroll, 60);
 }
@@ -802,12 +803,6 @@ function rpost(p) {
       <span class="pbadge">${esc(p.category)}</span>
       ${own?`<div class="mwrap">
         <button class="dotsbtn${mopen?' open':''}" onclick="tmenu('${p.id}',event)">...</button>
-        ${mopen?`<div class="pmenu">
-          <button class="mi" onclick="openEditPost('${p.id}')">✎ editar</button>
-          <button class="mi" onclick="tocol('${p.id}')">⊞ ${p.col?'quitar de coleccion':'guardar en coleccion'}</button>
-          ${p.col?`<button class="mi" onclick="openFolderPicker('${p.id}')">📁 ${p.folder_id?'mover de carpeta':'poner en carpeta'}</button>`:''}
-          <button class="mi del" onclick="confirmAction('Eliminar esta publicacion? No se puede deshacer.',()=>dpost(${p.id}))">✕ eliminar</button>
-        </div>`:''}
       </div>`:''}
     </div>
     <div class="pcontent">${esc(p.body)}</div>
@@ -946,19 +941,43 @@ function stptab(t) { S.ptab=t; S.activeFolderTab=null; render(); window.scrollTo
 function tmenu(id,e) {
   e.stopPropagation();
   id=isNaN(id)?id:Number(id);
-  if (S.menu===id) { S.menu=null; render(); return; }
+  if (S.menu===id) { S.menu=null; renderPostMenu(); return; }
   S.menu=id;
-  render();
+  // Capturar posición del botón para el menú flotante
+  const btn = e.currentTarget;
+  const rect = btn.getBoundingClientRect();
+  S.menuPos = { top: rect.bottom + 6, right: window.innerWidth - rect.right };
+  renderPostMenu();
+}
+
+function renderPostMenu() {
+  let el = document.getElementById('postMenuPortal');
+  if (!el) { el = document.createElement('div'); el.id='postMenuPortal'; document.body.appendChild(el); }
+  if (!S.menu || !S.menuPos) { el.innerHTML=''; return; }
+  const p = S.posts.find(x=>x.id===S.menu);
+  if (!p) { el.innerHTML=''; return; }
+  const { top, right } = S.menuPos;
+  el.innerHTML = `<div class="pmenu" style="position:fixed;top:${top}px;right:${right}px;z-index:9999;min-width:170px">
+    <button class="mi" onclick="openEditPost('${p.id}')">✎ editar</button>
+    <button class="mi" onclick="tocol('${p.id}')">⊞ ${p.col?'quitar de coleccion':'guardar en coleccion'}</button>
+    ${p.col?`<button class="mi" onclick="openFolderPicker('${p.id}')">📁 ${p.folder_id?'mover de carpeta':'poner en carpeta'}</button>`:''}
+    <button class="mi del" onclick="confirmAction('Eliminar esta publicacion? No se puede deshacer.',()=>dpost(${p.id}))">✕ eliminar</button>
+  </div>`;
 }
 
 document.addEventListener('click', e => {
-  if (S.menu && !e.target.closest('.mwrap')) { S.menu=null; render(); }
+  if (S.menu && !e.target.closest('.mwrap') && !e.target.closest('#postMenuPortal')) { S.menu=null; renderPostMenu(); }
   if (S.searchOpen && !e.target.closest('#searchOverlay') && !e.target.closest('#ns')) toggleSearch();
   // Fix móvil: excluir también #mob-notif para que el tap no abra+cierre al mismo tiempo
   if (S.notifOpen && !e.target.closest('#notifPanel') && !e.target.closest('#notif-btn') && !e.target.closest('#mob-notif')) {
     S.notifOpen=false; renderNotifPanel();
   }
 });
+
+// Cerrar el menú flotante al hacer scroll
+window.addEventListener('scroll', () => {
+  if (S.menu) { S.menu=null; renderPostMenu(); }
+}, { passive: true });
 
 async function post() {
   const txt = document.getElementById('ct').value.trim();
@@ -1423,7 +1442,7 @@ window.havatar=havatar; window.copyPost=copyPost;
 window.openEditPost=openEditPost; window.closeEditPost=closeEditPost; window.saveEditPost=saveEditPost;
 window.toggleNotif=toggleNotif; window.goNotif=goNotif; window.clearNotifs=clearNotifs;
 window.confirmAction=confirmAction; window.renderConfirmModal=renderConfirmModal;
-window.togglePw=togglePw;
+window.togglePw=togglePw; window.renderPostMenu=renderPostMenu;
 
 showLoading();
 // Usar refreshSession en lugar de getSession para garantizar token válido y metadatos frescos
