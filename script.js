@@ -915,14 +915,19 @@ async function tlike(id) {
   const i=p.likes.indexOf(S.me.id);
   const wasLiked = i>-1;
   if(wasLiked) p.likes.splice(i,1); else p.likes.push(S.me.id);
+  // Patch solo el botón de like sin re-render completo
+  const cid = safeId(id);
+  const btn = document.querySelector(`#post-${cid} .abtn.liked, #post-${cid} .abtn:first-child`);
+  const likeBtn = document.querySelector(`#post-${cid} .pacts .abtn`);
+  if (likeBtn) {
+    likeBtn.textContent = `♡ ${p.likes.length}`;
+    likeBtn.className = `abtn${p.likes.includes(S.me.id) ? ' liked' : ''}`;
+  }
   const {error}=await db.from('posts').update({likes:p.likes}).eq('id',id);
-  if(error) toast('Error al dar like');
-  else {
-    if (!wasLiked && p.user_id !== S.me.id) {
-      const myName = S.me.user_metadata?.display_name||S.me.email;
-      saveNotif(p.user_id, 'like', myName, id, p.body);
-    }
-    render();
+  if(error) { toast('Error al dar like'); render(); }
+  else if (!wasLiked && p.user_id !== S.me.id) {
+    const myName = S.me.user_metadata?.display_name||S.me.email;
+    saveNotif(p.user_id, 'like', myName, id, p.body);
   }
 }
 
@@ -931,9 +936,21 @@ async function tsave(id) {
   const p=S.posts.find(x=>x.id===id); if(!p) return;
   if(!Array.isArray(p.saved)) p.saved=[];
   const i=p.saved.indexOf(S.me.id);
-  if(i>-1){p.saved.splice(i,1);toast('eliminado de guardados');}else{p.saved.push(S.me.id);toast('guardado');}
+  if(i>-1){p.saved.splice(i,1);}else{p.saved.push(S.me.id);}
+  // Patch solo el botón de guardar sin re-render completo
+  const cid = safeId(id);
+  const pacts = document.querySelector(`#post-${cid} .pacts`);
+  if (pacts) {
+    const saveBtn = [...pacts.querySelectorAll('.abtn')].find(b => b.textContent.includes('guardar') || b.classList.contains('sav'));
+    if (saveBtn) {
+      const isSaved = p.saved.includes(S.me.id);
+      saveBtn.className = `abtn${isSaved ? ' sav' : ''}`;
+      saveBtn.textContent = `◈ ${isSaved ? 'guardado' : 'guardar'}`;
+    }
+  }
+  toast(p.saved.includes(S.me.id) ? 'guardado' : 'eliminado de guardados');
   const {error}=await db.from('posts').update({saved:p.saved}).eq('id',id);
-  if(error) toast('Error al guardar'); else render();
+  if(error) { toast('Error al guardar'); render(); }
 }
 
 async function tocol(id) {
@@ -952,7 +969,47 @@ async function dpost(id) {
   else { S.posts=S.posts.filter(x=>x.id!==id); S.menu=null; toast('publicacion eliminada'); render(); }
 }
 
-function tcmt(id) { id=isNaN(id)?id:Number(id); S.coOpen[id]=!S.coOpen[id]; render(); }
+function tcmt(id) {
+  id=isNaN(id)?id:Number(id);
+  S.coOpen[id]=!S.coOpen[id];
+  const cid = safeId(id);
+  const card = document.getElementById(`post-${cid}`);
+  if (!card) { render(); return; }
+  const p = S.posts.find(x=>x.id===id);
+  if (!p) { render(); return; }
+  // Patch solo la sección de comentarios del post específico
+  let csec = card.querySelector('.csec');
+  if (!S.coOpen[id]) {
+    if (csec) csec.remove();
+    return;
+  }
+  if (!csec) {
+    csec = document.createElement('div');
+    csec.className = 'csec';
+    card.appendChild(csec);
+  }
+  const cmts = Array.isArray(p.cmts) ? p.cmts : [];
+  csec.innerHTML = `
+    <div class="crow">
+      <input class="cinput" id="${cid}" placeholder="escribe un comentario..." onkeydown="if(event.key==='Enter')scmt('${id}')"/>
+      <button class="sendbtn" onclick="scmt('${id}')">↑</button>
+    </div>
+    ${cmts.map((c,ci)=>`<div class="cm">
+      <div onclick="vprof('${c.uid}')" style="cursor:pointer" title="ver perfil">${avEl({name:c.un,username:c.un,avatar_url:c.av||null})}</div>
+      <div class="cmb">
+        <div class="cma">
+          <span>${esc(c.un)}</span>
+          <span class="cmt-time">${ago(c.t)}</span>
+          ${c.uid === S.me.id ? `<button class="cmt-del" onclick="dcmt('${id}', '${c.id}')" title="eliminar comentario">✕</button>` : ''}
+        </div>
+        <div class="cmt">${esc(c.txt)}</div>
+      </div>
+    </div>`).join('')}`;
+  // Update comment count button
+  const cmtBtn = [...card.querySelectorAll('.pacts .abtn')].find(b => b.textContent.includes('◌'));
+  if (cmtBtn) cmtBtn.textContent = `◌ ${cmts.length}`;
+  setTimeout(() => document.getElementById(cid)?.focus(), 30);
+}
 
 async function scmt(id) {
   id = isNaN(id) ? id : Number(id);
@@ -967,14 +1024,13 @@ async function scmt(id) {
 
   const myName = S.me.user_metadata?.display_name || S.me.email;
   
-  // Creamos el nuevo comentario con un ID único real
   const nuevoComentario = {
-    id: 'c' + Date.now() + Math.random().toString(36).slice(2, 5), // ID único imbatible
+    id: 'c' + Date.now() + Math.random().toString(36).slice(2, 5),
     uid: S.me.id,
     un: myName,
     av: S.me.user_metadata?.avatar_url || null,
     txt,
-    t: new Date().toISOString() // Usamos formato ISO para mejor orden
+    t: new Date().toISOString()
   };
 
   p.cmts.push(nuevoComentario);
@@ -986,21 +1042,41 @@ async function scmt(id) {
     toast('Error al comentar');
   } else {
     inp.value = '';
-    // Notificar al dueño del post si no es el mismo usuario
     if (p.user_id !== S.me.id) {
-      const myName = S.me.user_metadata?.display_name||S.me.email;
-      saveNotif(p.user_id, 'comment', myName, id, p.body);
+      const myName2 = S.me.user_metadata?.display_name||S.me.email;
+      saveNotif(p.user_id, 'comment', myName2, id, p.body);
     }
-    render();
+    // Patch solo la sección de comentarios sin re-render completo
+    const cid = safeId(id);
+    const card = document.getElementById(`post-${cid}`);
+    const csec = card?.querySelector('.csec');
+    if (csec) {
+      // Añadir el nuevo comentario al DOM
+      const cmDiv = document.createElement('div');
+      cmDiv.className = 'cm';
+      cmDiv.innerHTML = `
+        <div onclick="vprof('${nuevoComentario.uid}')" style="cursor:pointer" title="ver perfil">${avEl({name:nuevoComentario.un,username:nuevoComentario.un,avatar_url:nuevoComentario.av||null})}</div>
+        <div class="cmb">
+          <div class="cma">
+            <span>${esc(nuevoComentario.un)}</span>
+            <span class="cmt-time">${ago(nuevoComentario.t)}</span>
+            <button class="cmt-del" onclick="dcmt('${id}', '${nuevoComentario.id}')" title="eliminar comentario">✕</button>
+          </div>
+          <div class="cmt">${esc(nuevoComentario.txt)}</div>
+        </div>`;
+      csec.appendChild(cmDiv);
+      // Update comment count
+      const cmtBtn = [...(card?.querySelectorAll('.pacts .abtn')||[])].find(b => b.textContent.includes('◌'));
+      if (cmtBtn) cmtBtn.textContent = `◌ ${p.cmts.length}`;
+    }
   }
 }
 
-async function dcmt(postId, cmtId) { // Cambiamos cmtIndex por cmtId
+async function dcmt(postId, cmtId) {
   postId = isNaN(postId) ? postId : Number(postId);
   const p = S.posts.find(x => x.id === postId); 
   if (!p || !Array.isArray(p.cmts)) return;
 
-  // Filtramos el array para quitar el comentario que coincida con el ID
   const nuevosComentarios = p.cmts.filter(c => c.id !== cmtId);
 
   const { error } = await db.from('posts').update({ cmts: nuevosComentarios }).eq('id', postId);
@@ -1009,8 +1085,24 @@ async function dcmt(postId, cmtId) { // Cambiamos cmtIndex por cmtId
     toast('Error al eliminar comentario');
   } else {
     p.cmts = nuevosComentarios;
-    toast('comentario eliminado'); 
-    render(); 
+    toast('comentario eliminado');
+    // Patch solo el comentario específico sin re-render completo
+    const cid = safeId(postId);
+    const card = document.getElementById(`post-${cid}`);
+    const csec = card?.querySelector('.csec');
+    if (csec) {
+      // Rebuildear la sección de comentarios (es la más simple y segura)
+      const cmtBtn = [...(card?.querySelectorAll('.pacts .abtn')||[])].find(b => b.textContent.includes('◌'));
+      if (cmtBtn) cmtBtn.textContent = `◌ ${nuevosComentarios.length}`;
+      const cmDivs = csec.querySelectorAll('.cm');
+      // Encontrar y eliminar el div del comentario que contiene el botón pulsado
+      cmDivs.forEach(div => {
+        const delBtn = div.querySelector('.cmt-del');
+        if (delBtn && delBtn.getAttribute('onclick')?.includes(cmtId)) {
+          div.remove();
+        }
+      });
+    }
   }
 }
 
