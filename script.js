@@ -31,6 +31,7 @@ const S = {
   PAGE_SIZE: 20,
   confirmModal: null,
   composeCat: null, // categoría seleccionada en compose (null = primera por defecto)
+  loading: false, // guard para evitar fetchPosts simultáneos
 };
 
 const CATS = ['todos', 'decoraciones', 'letras', 'simbolos', 'biografias', 'usernames', 'nombres'];
@@ -167,29 +168,61 @@ function boot() {
   fetchPosts();
   fetchFolders();
   loadNotifs();
+  startTimestampRefresh();
+}
+
+// Refresca los timestamps visibles cada 60s sin re-render completo
+let _tsInterval = null;
+function startTimestampRefresh() {
+  if (_tsInterval) clearInterval(_tsInterval);
+  _tsInterval = setInterval(() => {
+    document.querySelectorAll('.ptime').forEach(el => {
+      const ts = el.dataset.ts;
+      if (ts) el.textContent = ago(ts);
+    });
+    document.querySelectorAll('.cmt-time').forEach(el => {
+      const ts = el.dataset.ts;
+      if (ts) el.textContent = ago(ts);
+    });
+    document.querySelectorAll('.notif-time').forEach(el => {
+      const ts = el.dataset.ts;
+      if (ts) el.textContent = ago(ts);
+    });
+  }, 60000);
 }
 
 async function fetchPosts(reset = true) {
-  const feedContainer = document.getElementById('posts-container'); 
-  // Nota: Asegúrate de que en tu HTML el contenedor de posts tenga id="posts-container" o cámbialo aquí al id que uses.
+  if (S.loading) return; // guard: evitar llamadas simultáneas
+  S.loading = true;
 
   if (reset) {
     S.page_num = 1;
     offset = 0;
-    if (feedContainer) feedContainer.innerHTML = ''; 
   }
 
   const desde = offset;
   const hasta = desde + PAGE_SIZE - 1;
 
-  const { data, error } = await db
-    .from('posts')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .range(desde, hasta);
+  let data, error;
+  try {
+    ({ data, error } = await db
+      .from('posts')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .range(desde, hasta));
+  } catch(e) {
+    error = e;
+  }
+
+  S.loading = false;
 
   if (error) {
-    console.error("Error en el feed:", error);
+    console.error('Error en el feed:', error);
+    // Mostrar error visible al usuario si el feed está vacío
+    const mc = document.getElementById('mc');
+    if (mc && S.posts.length === 0) {
+      mc.innerHTML = `<div class="empty"><div class="ei">⚠️</div><div class="el">no se pudo cargar el feed. revisa tu conexión e intenta de nuevo.<br><br><button class="load-more-btn" onclick="fetchPosts()">reintentar</button></div></div>`;
+    }
     return;
   }
 
@@ -205,15 +238,17 @@ async function fetchPosts(reset = true) {
     if (reset) {
       S.posts = newPosts;
     } else {
-      // Evitar duplicados por si acaso
       const existingIds = new Set(S.posts.map(p => p.id));
       const filteredNew = newPosts.filter(p => !existingIds.has(p.id));
       S.posts = [...S.posts, ...filteredNew];
     }
-    
+
     offset += data.length;
-    render(); // Esto actualiza la interfaz de "Sigilo"
+    render();
     setTimeout(setupInfiniteScroll, 100);
+  } else if (reset && data && data.length === 0) {
+    // No hay posts en absoluto
+    render();
   }
 }
 
@@ -317,6 +352,9 @@ function renderNotifBadge() {
 }
 
 function toggleNotif() {
+  // Cerrar búsqueda si está abierta (mutuamente excluyentes)
+  if (S.searchOpen) toggleSearch();
+  mobCloseSearch();
   S.notifOpen = !S.notifOpen;
   if (S.notifOpen) {
     const unreadIds = S.notifs.filter(n => !n.read).map(n => n.id);
@@ -333,7 +371,17 @@ function toggleNotif() {
 function renderNotifPanel() {
   let el = document.getElementById('notifPanel');
   if (!el) { el = document.createElement('div'); el.id = 'notifPanel'; document.body.appendChild(el); }
-  if (!S.notifOpen) { el.innerHTML = ''; return; }
+  if (!S.notifOpen) { el.innerHTML = ''; const _bd=document.getElementById('notifBackdrop'); if(_bd) _bd.style.display='none'; return; }
+  // Backdrop para móvil — toque fuera cierra el panel
+  let bd = document.getElementById('notifBackdrop');
+  if (!bd) {
+    bd = document.createElement('div');
+    bd.id = 'notifBackdrop';
+    bd.style.cssText = 'position:fixed;inset:0;z-index:89;display:none;';
+    bd.addEventListener('click', () => { S.notifOpen=false; renderNotifPanel(); });
+    document.body.appendChild(bd);
+  }
+  bd.style.display = 'block';
   const items = S.notifs.length === 0
     ? `<div class="s-empty" style="padding:1.2rem .6rem">sin notificaciones aun</div>`
     : S.notifs.slice(0,20).map(n => `
@@ -344,7 +392,7 @@ function renderNotifPanel() {
           ${n.type==='like'?' le dio like a tu publicacion':' comento en tu publicacion'}
           ${n.postBody?`<div class="notif-preview">${esc(n.postBody)}</div>`:''}
         </div>
-        <span class="notif-time">${ago(n.ts)}</span>
+        <span class="notif-time" data-ts="${n.ts}">${ago(n.ts)}</span>
       </div>`).join('');
   el.innerHTML = `<div class="notif-panel">
     <div class="notif-head">
@@ -427,6 +475,8 @@ function toggleFolderView(id) { S.activeFolderTab = S.activeFolderTab===id?null:
 
 // --- BUSQUEDA ---
 function toggleSearch() {
+  // Cerrar notifs si están abiertas (mutuamente excluyentes)
+  if (S.notifOpen) { S.notifOpen = false; renderNotifPanel(); }
   S.searchOpen = !S.searchOpen;
   const overlay = document.getElementById('searchOverlay');
   if (!overlay) return;
@@ -699,13 +749,13 @@ function rpost(p) {
     <div class="phead">
       ${avEl(author)}
       <div style="flex:1">
-        <div class="puname" onclick="vprof('${p.user_id}')">${esc(author.username)}</div>
-        <div class="ptime">${ago(p.created_at)}</div>
+        <div class="puname" onclick="vprof('${p.user_id}')" tabindex="0" role="button" onkeydown="if(event.key==='Enter'||event.key===' ')vprof('${p.user_id}')">${esc(author.username)}</div>
+        <div class="ptime" data-ts="${p.created_at}">${ago(p.created_at)}</div>
       </div>
       <span class="pbadge">${esc(p.category)}</span>
       ${own?`<div class="mwrap">
-        <button class="dotsbtn" onclick="tmenu('${p.id}',event)">...</button>
-        ${mopen?`<div class="pmenu" style="top:${S.menuPos?S.menuPos.top:0}px;right:${S.menuPos?S.menuPos.right:0}px">
+        <button class="dotsbtn${mopen?' open':''}" onclick="tmenu('${p.id}',event)">...</button>
+        ${mopen?`<div class="pmenu">
           <button class="mi" onclick="openEditPost('${p.id}')">✎ editar</button>
           <button class="mi" onclick="tocol('${p.id}')">⊞ ${p.col?'quitar de coleccion':'guardar en coleccion'}</button>
           ${p.col?`<button class="mi" onclick="openFolderPicker('${p.id}')">📁 ${p.folder_id?'mover de carpeta':'poner en carpeta'}</button>`:''}
@@ -730,7 +780,7 @@ function rpost(p) {
         <div class="cmb">
           <div class="cma">
             <span>${esc(c.un)}</span>
-            <span class="cmt-time">${ago(c.t)}</span>
+            <span class="cmt-time" data-ts="${c.t}">${ago(c.t)}</span>
       ${c.uid === S.me.id ? `<button class="cmt-del" onclick="dcmt('${p.id}', '${c.id}')" title="eliminar comentario">✕</button>` : ''}
           </div>
           <div class="cmt">${esc(c.txt)}</div>
@@ -840,28 +890,27 @@ function renderCollections(userFolders, col, own) {
 function setcat(c) { S.cat=c; S.menu=null; render(); }
 function setComposeCat(c) {
   S.composeCat = c;
-  // Solo re-renderizar las pills sin perder el texto del textarea
-  const txt = document.getElementById('ct')?.value || '';
-  render();
-  // Restaurar texto después del render
-  const ta = document.getElementById('ct');
-  if (ta && txt) { ta.value = txt; ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }
+  // Actualizar solo las pills sin re-render completo (evita flash del textarea)
+  document.querySelectorAll('.compose-catb').forEach(btn => {
+    btn.classList.toggle('on', btn.textContent.trim() === c);
+  });
 }
-function stptab(t) { S.ptab=t; S.activeFolderTab=null; render(); }
+function stptab(t) { S.ptab=t; S.activeFolderTab=null; render(); window.scrollTo({top:0,behavior:"smooth"}); }
 function tmenu(id,e) {
   e.stopPropagation();
   id=isNaN(id)?id:Number(id);
-  if (S.menu===id) { S.menu=null; S.menuPos=null; render(); return; }
+  if (S.menu===id) { S.menu=null; render(); return; }
   S.menu=id;
-  const r=e.currentTarget.getBoundingClientRect();
-  S.menuPos={top:r.bottom+4, right:window.innerWidth-r.right};
   render();
 }
 
 document.addEventListener('click', e => {
   if (S.menu && !e.target.closest('.mwrap')) { S.menu=null; render(); }
   if (S.searchOpen && !e.target.closest('#searchOverlay') && !e.target.closest('#ns')) toggleSearch();
-  if (S.notifOpen && !e.target.closest('#notifPanel') && !e.target.closest('#notif-btn') && !e.target.closest('#mob-notif')) { S.notifOpen=false; renderNotifPanel(); }
+  // Fix móvil: excluir también #mob-notif para que el tap no abra+cierre al mismo tiempo
+  if (S.notifOpen && !e.target.closest('#notifPanel') && !e.target.closest('#notif-btn') && !e.target.closest('#mob-notif')) {
+    S.notifOpen=false; renderNotifPanel();
+  }
 });
 
 async function post() {
@@ -875,7 +924,8 @@ async function post() {
   if (btn) { btn.textContent='publicar'; btn.disabled=false; }
   if (error) toast('Error: '+error.message);
   else {
-    document.getElementById('ct').value='';
+    const ctEl = document.getElementById('ct');
+    if (ctEl) { ctEl.value=''; ctEl.style.height=''; ctEl.style.minHeight=''; }
     // Añadir nuevo post al inicio con animación
     if (data && data[0]) {
       const np = { ...data[0], likes: [], cmts: [], saved: [], t: data[0].created_at };
@@ -956,10 +1006,15 @@ async function tsave(id) {
 async function tocol(id) {
   id=isNaN(id)?id:Number(id);
   const p=S.posts.find(x=>x.id===id); if(!p) return;
-  p.col=!p.col; if(!p.col) p.folder_id=null; S.menu=null;
+  p.col=!p.col; if(!p.col) p.folder_id=null;
+  // Cerrar menú sin re-render completo
+  S.menu=null;
+  const cid = safeId(id);
+  const card = document.getElementById('post-' + cid);
+  if (card) { const menu = card.querySelector('.pmenu'); if (menu) menu.remove(); }
   const {error}=await db.from('posts').update({col:p.col,folder_id:p.folder_id||null}).eq('id',id);
   if(error) toast('Error al actualizar coleccion');
-  else { toast(p.col?'anadido a coleccion':'eliminado de coleccion'); render(); }
+  else { toast(p.col?'anadido a coleccion':'eliminado de coleccion'); }
 }
 
 async function dpost(id) {
@@ -999,7 +1054,7 @@ function tcmt(id) {
       <div class="cmb">
         <div class="cma">
           <span>${esc(c.un)}</span>
-          <span class="cmt-time">${ago(c.t)}</span>
+          <span class="cmt-time" data-ts="${c.t}">${ago(c.t)}</span>
           ${c.uid === S.me.id ? `<button class="cmt-del" onclick="dcmt('${id}', '${c.id}')" title="eliminar comentario">✕</button>` : ''}
         </div>
         <div class="cmt">${esc(c.txt)}</div>
@@ -1059,7 +1114,7 @@ async function scmt(id) {
         <div class="cmb">
           <div class="cma">
             <span>${esc(nuevoComentario.un)}</span>
-            <span class="cmt-time">${ago(nuevoComentario.t)}</span>
+            <span class="cmt-time" data-ts="${nuevoComentario.t}">${ago(nuevoComentario.t)}</span>
             <button class="cmt-del" onclick="dcmt('${id}', '${nuevoComentario.id}')" title="eliminar comentario">✕</button>
           </div>
           <div class="cmt">${esc(nuevoComentario.txt)}</div>
@@ -1213,6 +1268,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') window.register(); });
   });
+  // Accesibilidad: logo navegable con teclado
+  const logo = document.querySelector('.hlogo');
+  if (logo) {
+    logo.setAttribute('tabindex', '0');
+    logo.setAttribute('role', 'button');
+    logo.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') gofeed(); });
+  }
 });
 
 // --- SKELETON LOADING ---
