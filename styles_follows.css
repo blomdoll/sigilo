@@ -1,0 +1,219 @@
+/* ================================================================
+   SIGILO — Estilos: Sistema de Seguidores/Siguiendo
+   Agrega en <head>: <link rel="stylesheet" href="styles_follows.css">
+   ================================================================ */
+
+/* ---- Tabs del feed (Todos / Siguiendo) ---- */
+.feed-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 1rem;
+  border: 1px solid var(--bd);
+  border-radius: var(--r2);
+  overflow: hidden;
+  background: var(--surface);
+}
+.feed-tab {
+  flex: 1;
+  padding: .55rem .8rem;
+  font-size: .82rem;
+  color: var(--tx2);
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--fb);
+  transition: background .15s, color .15s;
+  border: none;
+}
+.feed-tab:hover { background: var(--w4); color: var(--w2); }
+.feed-tab.on {
+  background: var(--w1);
+  color: #fff;
+  font-weight: 500;
+}
+
+/* ---- Estado vacío del tab siguiendo ---- */
+.feed-following-empty {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  color: var(--tx3);
+  font-size: .88rem;
+}
+.feed-following-empty .fi-icon { font-size: 2rem; margin-bottom: .7rem; }
+.feed-following-empty a,
+.feed-following-empty span.link {
+  color: var(--w1);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ---- Botón seguir/siguiendo en perfil ajeno ---- */
+.follow-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .5rem 1.15rem;
+  border-radius: var(--r2);
+  font-size: .83rem;
+  font-weight: 500;
+  font-family: var(--fb);
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s, transform .1s;
+  border: 1.5px solid var(--w1);
+  background: var(--w1);
+  color: #fff;
+  margin-top: .45rem;
+}
+.follow-btn:hover { background: var(--w2); border-color: var(--w2); transform: translateY(-1px); }
+.follow-btn:active { transform: translateY(0); }
+.follow-btn.following {
+  background: transparent;
+  color: var(--tx2);
+  border-color: var(--bd);
+}
+.follow-btn.following:hover {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
+.follow-btn:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ---- Contadores seguidores/siguiendo en perfil ---- */
+.follow-counts {
+  display: flex;
+  gap: 1.4rem;
+  margin: .55rem 0 .4rem;
+  justify-content: center;
+}
+.follow-count-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .05rem;
+  cursor: pointer;
+  padding: .3rem .5rem;
+  border-radius: var(--r2);
+  transition: background .15s;
+}
+.follow-count-item:hover { background: var(--w4); }
+.follow-count-num {
+  font-family: var(--fd);
+  font-size: 1.1rem;
+  color: var(--tx);
+  font-weight: 500;
+}
+.follow-count-label {
+  font-size: .72rem;
+  color: var(--tx3);
+  letter-spacing: .02em;
+}
+
+/* ---- Panel lista de seguidores/siguiendo ---- */
+.follow-list-panel {
+  position: fixed;
+  inset: 0;
+  background: rgba(44, 24, 16, .45);
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.follow-list-box {
+  background: var(--surface);
+  border: 1px solid var(--bd);
+  border-radius: var(--r);
+  width: 100%;
+  max-width: 360px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(44,24,16,.18);
+}
+.follow-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.2rem .85rem;
+  border-bottom: 1px solid var(--bd);
+  flex-shrink: 0;
+}
+.follow-list-title {
+  font-family: var(--fd);
+  font-size: 1.05rem;
+  color: var(--tx);
+}
+.follow-list-close {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--s2);
+  color: var(--tx2);
+  font-size: .9rem;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  border: none;
+}
+.follow-list-close:hover { background: var(--w4); color: var(--w2); }
+.follow-list-body {
+  overflow-y: auto;
+  flex: 1;
+  padding: .5rem 0;
+}
+.follow-list-row {
+  display: flex;
+  align-items: center;
+  gap: .85rem;
+  padding: .65rem 1.2rem;
+  cursor: pointer;
+  transition: background .12s;
+}
+.follow-list-row:hover { background: var(--w4); }
+.follow-list-name {
+  font-size: .88rem;
+  color: var(--tx);
+  flex: 1;
+}
+.follow-list-empty {
+  padding: 1.5rem;
+  text-align: center;
+  color: var(--tx3);
+  font-size: .85rem;
+}
+
+/* ---- Skeleton para feed siguiendo ---- */
+.skeleton-card { 
+  background: var(--surface); 
+  border: 1px solid var(--bd); 
+  border-radius: var(--r); 
+  padding: 1rem; 
+  margin-bottom: .9rem;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .5; }
+}
+.sk-head { display: flex; gap: .7rem; align-items: flex-start; margin-bottom: .8rem; }
+.sk-meta { flex: 1; display: flex; flex-direction: column; gap: .4rem; }
+.sk-line { background: var(--bd); border-radius: 6px; height: 12px; }
+.sk-avatar { width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0; }
+.sk-line.short { width: 45%; }
+.sk-line.tiny  { width: 28%; height: 9px; }
+.sk-line.full  { width: 100%; margin-bottom: .45rem; }
+.sk-line.med   { width: 70%; }
+
+/* ---- Responsive móvil ---- */
+@media (max-width: 640px) {
+  .feed-tabs { margin-bottom: .8rem; }
+  .feed-tab  { font-size: .8rem; padding: .5rem .6rem; }
+  .follow-counts { gap: 1rem; }
+  .follow-count-num { font-size: 1rem; }
+  .follow-btn { font-size: .8rem; padding: .45rem 1rem; }
+  .follow-list-panel { padding: .5rem; align-items: flex-end; }
+  .follow-list-box { max-height: 75vh; border-radius: var(--r) var(--r) 0 0; max-width: 100%; }
+}
