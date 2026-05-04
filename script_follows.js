@@ -1,26 +1,17 @@
 // ================================================================
-// SIGILO — script_follows.js
+// SIGILO — script_follows.js  (v2 — corregido)
 // Sistema de seguidores / siguiendo
-//
-// CÓMO AGREGAR AL PROYECTO:
-// En index.html, agrega JUSTO DESPUÉS de <script src="script.js"></script>:
-//   <script src="script_follows.js"></script>
-// Y en <head>:
-//   <link rel="stylesheet" href="styles_follows.css">
 // ================================================================
 
-// ----------------------------------------------------------------
-// Estado de follows (se extiende S del script principal)
-// ----------------------------------------------------------------
-S.followTab        = 'todos';      // 'todos' | 'siguiendo'
-S.followingIds     = new Set();    // IDs de usuarios que yo sigo
-S.followingPosts   = [];           // Posts del feed "siguiendo"
-S.followingLoaded  = false;        // ¿ya fetcheamos el feed siguiendo?
-S.followListModal  = null;         // { uid, type:'followers'|'following', title, list }
-S.profileCounts    = {};           // { [uid]: { followers, following } }
+S.followTab        = 'todos';
+S.followingIds     = new Set();
+S.followingPosts   = [];
+S.followingLoaded  = false;
+S.followListModal  = null;
+S.profileCounts    = {};
 
 // ----------------------------------------------------------------
-// INICIALIZACIÓN: cargar a quién sigo
+// INICIALIZACIÓN
 // ----------------------------------------------------------------
 async function loadFollowingIds() {
   if (!S.me) return;
@@ -50,23 +41,18 @@ async function followUser(uid) {
 
   if (!error) {
     S.followingIds.add(uid);
-    // Notificación al usuario seguido
     const myName = S.me.user_metadata?.display_name || S.me.email;
     try {
       await db.from('notifications').insert([{
-        to_uid:    uid,
-        from_uid:  S.me.id,
-        from_name: myName,
-        type:      'follow',
-        post_id:   null,
-        post_body: null,
-        read:      false,
+        to_uid: uid, from_uid: S.me.id, from_name: myName,
+        type: 'follow', post_id: null, post_body: null, read: false,
       }]);
     } catch(e) {}
-    toast('siguiendo ✦');
-    // Invalidar cache de contadores de ese perfil
+    toast('siguiendo \u2756');
+    // Invalidar cache de ambos perfiles (el seguido Y el mio propio)
     delete S.profileCounts[uid];
-    S.followingLoaded = false; // forzar re-fetch del feed siguiendo
+    delete S.profileCounts[S.me.id];
+    S.followingLoaded = false;
   } else {
     toast('Error al seguir');
   }
@@ -87,8 +73,8 @@ async function unfollowUser(uid) {
     S.followingIds.delete(uid);
     toast('dejaste de seguir');
     delete S.profileCounts[uid];
+    delete S.profileCounts[S.me.id];
     S.followingLoaded = false;
-    // Limpiar posts de ese usuario del feed siguiendo
     S.followingPosts = S.followingPosts.filter(p => p.user_id !== uid);
   } else {
     toast('Error al dejar de seguir');
@@ -98,25 +84,25 @@ async function unfollowUser(uid) {
 }
 
 // ----------------------------------------------------------------
-// RENDERIZAR BOTÓN FOLLOW en el perfil (actualiza sin re-render completo)
+// RENDERIZAR BOTON + CONTADORES (actualizacion parcial del DOM)
 // ----------------------------------------------------------------
 function renderProfileFollowState(uid) {
   const wrap = document.getElementById('follow-btn-wrap');
-  if (!wrap) return;
-  const isFollowing = S.followingIds.has(uid);
-  wrap.innerHTML = renderFollowBtn(uid, isFollowing);
-  // Actualizar contadores
+  if (wrap) {
+    wrap.innerHTML = renderFollowBtn(uid, S.followingIds.has(uid));
+  }
   loadProfileCounts(uid).then(() => {
-    const countsEl = document.getElementById('follow-counts-' + uid.replace(/-/g,'_'));
+    const safeUid = uid.replace(/-/g,'_');
+    const countsEl = document.getElementById('follow-counts-' + safeUid);
     if (countsEl) countsEl.outerHTML = renderFollowCounts(uid);
   });
 }
 
 function renderFollowBtn(uid, isFollowing) {
-  if (uid === S.me?.id) return ''; // No mostrar en tu propio perfil
+  if (uid === S.me?.id) return '';
   return `<button class="follow-btn${isFollowing ? ' following' : ''}"
     onclick="${isFollowing ? `unfollowUser('${uid}')` : `followUser('${uid}')`}">
-    ${isFollowing ? '✓ siguiendo' : '+ seguir'}
+    ${isFollowing ? '\u2713 siguiendo' : '+ seguir'}
   </button>`;
 }
 
@@ -136,7 +122,7 @@ function renderFollowCounts(uid) {
 }
 
 async function loadProfileCounts(uid) {
-  if (S.profileCounts[uid]) return; // ya cargado
+  if (S.profileCounts[uid]) return;
   try {
     const { data } = await db.from('profiles')
       .select('followers_count, following_count')
@@ -147,18 +133,22 @@ async function loadProfileCounts(uid) {
         followers: data.followers_count || 0,
         following: data.following_count || 0,
       };
+      return;
     }
-  } catch(e) {
-    // Si la columna no existe aún, contar manualmente
-    try {
-      const [{ count: fwers }, { count: fwing }] = await Promise.all([
-        db.from('follows').select('id', { count:'exact', head:true }).eq('following_id', uid),
-        db.from('follows').select('id', { count:'exact', head:true }).eq('follower_id', uid),
-      ]);
-      S.profileCounts[uid] = { followers: fwers || 0, following: fwing || 0 };
-    } catch(e2) {
-      S.profileCounts[uid] = { followers: 0, following: 0 };
-    }
+  } catch(e) { /* columnas aun no existen, usar fallback */ }
+
+  // Fallback: contar directo desde la tabla follows
+  try {
+    const [resA, resB] = await Promise.all([
+      db.from('follows').select('id', { count:'exact', head:true }).eq('following_id', uid),
+      db.from('follows').select('id', { count:'exact', head:true }).eq('follower_id',  uid),
+    ]);
+    S.profileCounts[uid] = {
+      followers: resA.count || 0,
+      following: resB.count || 0,
+    };
+  } catch(e2) {
+    S.profileCounts[uid] = { followers: 0, following: 0 };
   }
 }
 
@@ -184,9 +174,9 @@ async function openFollowList(uid, type) {
     }
     S.followListModal.list = data;
   } catch(e) {
-    // Fallback sin join (si las FK no están configuradas como relaciones en Supabase)
+    // Fallback sin join de FK
     try {
-      const col = type === 'followers' ? 'follower_id' : 'following_id';
+      const col       = type === 'followers' ? 'follower_id'  : 'following_id';
       const filterCol = type === 'followers' ? 'following_id' : 'follower_id';
       const { data: followData } = await db.from('follows').select(col).eq(filterCol, uid);
       const ids = (followData || []).map(r => r[col]);
@@ -227,7 +217,7 @@ function renderFollowListModal() {
   if (loading) {
     bodyHtml = `<div class="follow-list-empty">cargando...</div>`;
   } else if (list.length === 0) {
-    bodyHtml = `<div class="follow-list-empty">aún no hay ${title} aquí</div>`;
+    bodyHtml = `<div class="follow-list-empty">aun no hay ${title} aqui</div>`;
   } else {
     bodyHtml = list.map(u => {
       const name = u.display_name || u.username || '?';
@@ -244,7 +234,7 @@ function renderFollowListModal() {
     <div class="follow-list-box">
       <div class="follow-list-head">
         <span class="follow-list-title">${title}</span>
-        <button class="follow-list-close" onclick="closeFollowList()">✕</button>
+        <button class="follow-list-close" onclick="closeFollowList()">\u2715</button>
       </div>
       <div class="follow-list-body">${bodyHtml}</div>
     </div>
@@ -254,51 +244,29 @@ function renderFollowListModal() {
 // ----------------------------------------------------------------
 // FEED "SIGUIENDO"
 // ----------------------------------------------------------------
-async function fetchFollowingFeed(reset = true) {
+async function fetchFollowingFeed() {
   if (S.followingIds.size === 0) {
     S.followingPosts = [];
     renderFeedFollowing();
     return;
   }
 
-  const ids = [...S.followingIds];
-
-  // Skeletons mientras carga
-  if (reset) {
-    const mc = document.getElementById('mc');
-    if (mc) {
-      const sk = `<div class="skeleton-card"><div class="sk-head"><div class="sk-line sk-avatar"></div><div class="sk-meta"><div class="sk-line short"></div><div class="sk-line tiny"></div></div></div><div class="sk-line full"></div><div class="sk-line med"></div></div>`;
-      // Conservar el header del feed (tabs + compose)
-      const existing = mc.querySelector('.feed-tabs');
-      if (existing) {
-        // Solo reemplazar los posts, no los tabs
-        const after = mc.querySelector('.cats');
-        if (after) {
-          let next = after.nextSibling;
-          while (next) { const tmp = next.nextSibling; next.remove(); next = tmp; }
-          after.insertAdjacentHTML('afterend', sk.repeat(3));
-        }
-      }
-    }
-  }
-
   try {
     const { data, error } = await db
       .from('posts')
       .select('*')
-      .in('user_id', ids)
+      .in('user_id', [...S.followingIds])
       .order('created_at', { ascending: false })
       .range(0, 29);
 
     if (!error && data) {
-      const newPosts = data.map(p => ({
+      S.followingPosts = data.map(p => ({
         ...p,
         likes: Array.isArray(p.likes) ? p.likes : [],
         cmts:  Array.isArray(p.cmts)  ? p.cmts  : [],
         saved: Array.isArray(p.saved) ? p.saved : [],
         t: p.created_at,
       }));
-      S.followingPosts = newPosts;
       S.followingLoaded = true;
     }
   } catch(e) {
@@ -309,7 +277,7 @@ async function fetchFollowingFeed(reset = true) {
 }
 
 // ----------------------------------------------------------------
-// RENDER DEL FEED COMPLETO con tabs
+// RENDER DEL FEED CON TABS
 // ----------------------------------------------------------------
 function rfeedWithTabs() {
   const composeCat = S.composeCat || CATS[1];
@@ -317,7 +285,7 @@ function rfeedWithTabs() {
   <div class="ftitle">inicio</div>
   <div class="fsub">comparte decoraciones, letras, simbolos y mas</div>
   <div class="feed-tabs">
-    <button class="feed-tab${S.followTab==='todos'?' on':''}" onclick="setFeedTab('todos')">✦ todos</button>
+    <button class="feed-tab${S.followTab==='todos'?' on':''}" onclick="setFeedTab('todos')">\u2756 todos</button>
     <button class="feed-tab${S.followTab==='siguiendo'?' on':''}" onclick="setFeedTab('siguiendo')">siguiendo</button>
   </div>
   <div class="ccard">
@@ -336,12 +304,11 @@ function rfeedWithTabs() {
   if (S.followTab === 'siguiendo') {
     return tabsHtml + renderFollowingSection();
   } else {
-    // Tab "todos" — renderizado normal con filtros de categoría
     const posts = S.cat==='todos' ? [...S.posts] : S.posts.filter(p=>p.category===S.cat);
     return tabsHtml + `
     <div class="cats">${CATS.map(c=>`<button class="catb${S.cat===c?' on':''}" onclick="setcat('${c}')">${c}</button>`).join('')}</div>
     ${posts.length===0
-      ? `<div class="empty"><div class="ei">🌸</div><div class="el">todavia no hay publicaciones aqui — se el primero ✦</div></div>`
+      ? `<div class="empty"><div class="ei">\ud83c\udf38</div><div class="el">todavia no hay publicaciones aqui \u2014 se el primero \u2756</div></div>`
       : posts.map(rpost).join('') + `<div id="scroll-sentinel" style="height:1px;margin:1rem 0"></div>`
     }`;
   }
@@ -350,24 +317,21 @@ function rfeedWithTabs() {
 function renderFollowingSection() {
   if (S.followingIds.size === 0) {
     return `<div class="feed-following-empty">
-      <div class="fi-icon">🌿</div>
-      <div>aún no sigues a nadie.</div>
-      <div style="margin-top:.5rem">busca usuarios con el ícono <b>🔍</b> o visita perfiles para seguirlos.</div>
+      <div class="fi-icon">\ud83c\udf3f</div>
+      <div>aun no sigues a nadie.</div>
+      <div style="margin-top:.5rem">busca usuarios con el icono \ud83d\udd0d o visita perfiles para seguirlos.</div>
     </div>`;
   }
-
   if (!S.followingLoaded) {
     const sk = `<div class="skeleton-card"><div class="sk-head"><div class="sk-line sk-avatar"></div><div class="sk-meta"><div class="sk-line short"></div><div class="sk-line tiny"></div></div></div><div class="sk-line full"></div><div class="sk-line med"></div></div>`;
     return sk.repeat(3);
   }
-
   if (S.followingPosts.length === 0) {
     return `<div class="feed-following-empty">
-      <div class="fi-icon">📭</div>
-      <div>las personas que sigues no han publicado nada todavía.</div>
+      <div class="fi-icon">\ud83d\udceb</div>
+      <div>las personas que sigues no han publicado nada todavia.</div>
     </div>`;
   }
-
   return S.followingPosts.map(rpost).join('');
 }
 
@@ -392,7 +356,29 @@ function setFeedTab(tab) {
 }
 
 // ----------------------------------------------------------------
-// PATCH: rprofile — inyectar botón follow + contadores
+// HELPER: inyectar HTML despues de .pbio usando DOM (sin regex fragil)
+// ----------------------------------------------------------------
+function injectAfterBio(html, insertHtml) {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  const bio = tmp.querySelector('.pbio');
+  if (bio) {
+    const frag = document.createElement('div');
+    frag.innerHTML = insertHtml;
+    // Insertar nodos en orden despues de .pbio
+    let ref = bio;
+    while (frag.firstChild) {
+      ref.parentNode.insertBefore(frag.firstChild, ref.nextSibling);
+      ref = ref.nextSibling;
+    }
+  }
+  return tmp.innerHTML;
+}
+
+// ----------------------------------------------------------------
+// PATCH: rprofile
+// Muestra contadores en perfil propio Y ajeno.
+// Muestra boton seguir solo en perfiles ajenos.
 // ----------------------------------------------------------------
 const _origRprofile = rprofile;
 window.rprofile = function() {
@@ -400,34 +386,26 @@ window.rprofile = function() {
 
   const uid = S.puid;
   const own = uid === S.me?.id;
-  if (own) return html; // No modificar perfil propio
 
-  const isFollowing = S.followingIds.has(uid);
-
-  // Cargar contadores en background si no están
+  // Cargar contadores en background si no estan en cache
   if (!S.profileCounts[uid]) {
     loadProfileCounts(uid).then(() => {
-      const countsEl = document.getElementById('follow-counts-' + uid.replace(/-/g,'_'));
+      const safeUid = uid.replace(/-/g,'_');
+      const countsEl = document.getElementById('follow-counts-' + safeUid);
       if (countsEl) countsEl.outerHTML = renderFollowCounts(uid);
     });
   }
 
-  // Inyectar botón follow y contadores después del nombre en .pinfo
-  const followHtml = `
-    ${renderFollowCounts(uid)}
-    <div id="follow-btn-wrap">${renderFollowBtn(uid, isFollowing)}</div>`;
+  // Siempre mostrar contadores. Boton seguir solo en ajenos.
+  const isFollowing = !own && S.followingIds.has(uid);
+  const followHtml = `${renderFollowCounts(uid)}${own ? '' : `<div id="follow-btn-wrap">${renderFollowBtn(uid, isFollowing)}</div>`}`;
 
-  // Insertar después del bloque .pinfo > .pbio
-  html = html.replace(
-    /(<div class="pbio">[^<]*<\/div>)/,
-    `$1${followHtml}`
-  );
-
+  html = injectAfterBio(html, followHtml);
   return html;
 };
 
 // ----------------------------------------------------------------
-// PATCH: rfeed — usar versión con tabs
+// PATCH: rfeed — tabs
 // ----------------------------------------------------------------
 const _origRfeed = rfeed;
 window.rfeed = function() {
@@ -444,34 +422,42 @@ window.render = function() {
 };
 
 // ----------------------------------------------------------------
-// PATCH: renderNotifPanel — mostrar notif de nuevo seguidor
+// PATCH: renderNotifPanel — notif de nuevo seguidor
 // ----------------------------------------------------------------
 const _origRenderNotifPanel = renderNotifPanel;
 window.renderNotifPanel = function() {
   let el = document.getElementById('notifPanel');
   if (!el) { el = document.createElement('div'); el.id = 'notifPanel'; document.body.appendChild(el); }
-  if (!S.notifOpen) { el.innerHTML = ''; const _bd=document.getElementById('notifBackdrop'); if(_bd) _bd.style.display='none'; return; }
+  if (!S.notifOpen) {
+    el.innerHTML = '';
+    const _bd = document.getElementById('notifBackdrop');
+    if (_bd) _bd.style.display = 'none';
+    return;
+  }
   let bd = document.getElementById('notifBackdrop');
   if (!bd) {
     bd = document.createElement('div');
     bd.id = 'notifBackdrop';
     bd.style.cssText = 'position:fixed;inset:0;z-index:89;display:none;';
-    bd.addEventListener('click', () => { S.notifOpen=false; renderNotifPanel(); });
+    bd.addEventListener('click', () => { S.notifOpen = false; renderNotifPanel(); });
     document.body.appendChild(bd);
   }
   bd.style.display = 'block';
 
   const items = S.notifs.length === 0
     ? `<div class="s-empty" style="padding:1.2rem .6rem">sin notificaciones aun</div>`
-    : S.notifs.slice(0,20).map(n => {
-        let icon = '♡', text = ' le dio like a tu publicacion';
-        if (n.type === 'comment') { icon = '◌'; text = ' comento en tu publicacion'; }
-        if (n.type === 'follow')  { icon = '✦'; text = ' empezó a seguirte'; }
-        return `<div class="notif-row" onclick="${n.type==='follow' ? `S.notifOpen=false;renderNotifPanel();vprof('${n.fromUid}')` : `goNotif('${n.postId}')`}">
+    : S.notifs.slice(0, 20).map(n => {
+        let icon = '\u2661', text = ' le dio like a tu publicacion';
+        if (n.type === 'comment') { icon = '\u25cc'; text = ' comento en tu publicacion'; }
+        if (n.type === 'follow')  { icon = '\u2756'; text = ' empez\u00f3 a seguirte'; }
+        const onclick = n.type === 'follow'
+          ? `S.notifOpen=false;renderNotifPanel();vprof('${n.fromUid}')`
+          : `goNotif('${n.postId}')`;
+        return `<div class="notif-row" onclick="${onclick}">
           <span class="notif-icon">${icon}</span>
           <div class="notif-body">
             <span class="notif-name">${esc(n.fromName)}</span>${text}
-            ${n.postBody && n.type!=='follow' ?`<div class="notif-preview">${esc(n.postBody)}</div>`:''}
+            ${n.postBody && n.type !== 'follow' ? `<div class="notif-preview">${esc(n.postBody)}</div>` : ''}
           </div>
           <span class="notif-time" data-ts="${n.ts}">${ago(n.ts)}</span>
         </div>`;
@@ -480,7 +466,7 @@ window.renderNotifPanel = function() {
   el.innerHTML = `<div class="notif-panel">
     <div class="notif-head">
       <span>notificaciones</span>
-      ${S.notifs.length>0?`<button class="notif-clear" onclick="clearNotifs()">limpiar</button>`:''}
+      ${S.notifs.length > 0 ? `<button class="notif-clear" onclick="clearNotifs()">limpiar</button>` : ''}
     </div>
     ${items}
   </div>`;
@@ -492,18 +478,17 @@ window.renderNotifPanel = function() {
 const _origBoot = boot;
 window.boot = function() {
   _origBoot();
-  // Cargar lista de IDs que seguimos (sin bloquear el boot)
   loadFollowingIds();
 };
 
 // ----------------------------------------------------------------
 // EXPOSE
 // ----------------------------------------------------------------
-window.followUser       = followUser;
-window.unfollowUser     = unfollowUser;
-window.setFeedTab       = setFeedTab;
-window.openFollowList   = openFollowList;
-window.closeFollowList  = closeFollowList;
+window.followUser            = followUser;
+window.unfollowUser          = unfollowUser;
+window.setFeedTab            = setFeedTab;
+window.openFollowList        = openFollowList;
+window.closeFollowList       = closeFollowList;
 window.renderFollowListModal = renderFollowListModal;
-window.loadFollowingIds = loadFollowingIds;
-window.fetchFollowingFeed = fetchFollowingFeed;
+window.loadFollowingIds      = loadFollowingIds;
+window.fetchFollowingFeed    = fetchFollowingFeed;
