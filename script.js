@@ -1750,3 +1750,11 @@ window.mobCloseSearch = mobCloseSearch;
 window.mobSearchUsers = mobSearchUsers;
 window.mobGoSearchUser = mobGoSearchUser;
 window.mobSetActive = mobSetActive;
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(reg => console.log('Sigilo PWA: Instalación lista ✅'))
+      .catch(err => console.log('Sigilo PWA: Error ❌', err));
+  });
+}
