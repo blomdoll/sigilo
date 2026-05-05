@@ -1079,22 +1079,53 @@ header { position: relative; }
   cursor: pointer;
   transition: background .15s, color .15s;
   flex-shrink: 0;
-  margin-left: auto; /* empuja al extremo derecho del header */
 }
 .chat-mob-btn:hover,
 .chat-mob-active {
   background: var(--w4) !important;
   color: var(--w1) !important;
 }
-@media (max-width: 640px) {
-  .chat-mob-btn { display: flex; }
 
-  /* Fix bug visual: el header en móvil necesita espacio para el botón chat */
+/* Contenedor de botones de acción en header móvil (búsqueda + chat) */
+.mob-header-actions {
+  display: none;
+  align-items: center;
+  gap: .15rem;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.mob-header-btn {
+  display: flex;
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--tx3);
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  flex-shrink: 0;
+}
+.mob-header-btn:hover {
+  background: var(--w4);
+  color: var(--w1);
+}
+
+@media (max-width: 640px) {
+  .mob-header-actions { display: flex; }
+  .chat-mob-btn {
+    display: flex;
+    margin-left: 0; /* ya no necesita empujar, lo hace el contenedor */
+  }
+
+  /* Fix bug visual: el header en móvil necesita espacio para los botones */
   header {
     justify-content: space-between;
     gap: .5rem;
   }
-  /* Asegurarse de que el hnav no tape el botón */
+  /* Asegurarse de que el hnav no tape los botones */
   .hnav {
     flex: 0 1 auto;
   }
