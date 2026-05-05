@@ -36,6 +36,7 @@ const S = {
   theme: 'durazno', // tema activo
   pinnedPosts: {}, // { userId: postId } — un post anclado por usuario
   explorePage: false, // si estamos en la página explorar
+  feedTab: 'todos', // tab activa en el feed: 'todos' | 'explorar' | 'siguiendo'
 };
 window.S = S; // Exponer globalmente para script_chat.js y otros módulos
 
@@ -715,7 +716,7 @@ function saveNavState() {
   try { sessionStorage.setItem('sigilo_nav', JSON.stringify({ page: S.page, puid: S.puid, ptab: S.ptab })); } catch(e) {}
 }
 
-function gofeed() { S.page='feed'; S.explorePage=false; S.puid=null; S.menu=null; renderPostMenu(); saveNavState(); document.title='inicio · sigilo'; nav(); render(); }
+function gofeed() { S.page='feed'; S.explorePage=false; S.feedTab='todos'; S.puid=null; S.menu=null; renderPostMenu(); saveNavState(); document.title='inicio · sigilo'; nav(); render(); }
 function goprofile() { S.page='profile'; S.puid=S.me.id; S.ptab='posts'; S.menu=null; renderPostMenu(); saveNavState(); document.title='perfil · sigilo'; nav(); render(); }
 async function vprof(id) {
   S.page='profile'; S.puid=id; S.ptab='posts'; S.menu=null; saveNavState(); document.title='perfil · sigilo'; nav();
@@ -931,6 +932,11 @@ function rfeed() {
     </div>
     <div class="explore-banner-arrow"><i class="fi fi-rr-angle-right"></i></div>
   </div>
+  <div class="feed-tabs">
+    <button class="feed-tab${S.feedTab!=='siguiendo'&&S.feedTab!=='explorar'?' on':''}" onclick="setFeedTab('todos')">✦ todos</button>
+    <button class="feed-tab${S.feedTab==='explorar'?' on':''}" onclick="setFeedTab('explorar')">explorar</button>
+    <button class="feed-tab${S.feedTab==='siguiendo'?' on':''}" onclick="setFeedTab('siguiendo')">siguiendo</button>
+  </div>
   <div class="cats">${CATS.map(c=>`<button class="catb${S.cat===c?' on':''}" onclick="setcat('${c}')">${c}</button>`).join('')}</div>
   ${posts.length===0
     ? `<div class="empty"><div class="ei">🌸</div><div class="el">todavía no hay publicaciones aquí — sé el primero ✦</div></div>`
@@ -1108,6 +1114,13 @@ function renderCollections(userFolders, col, own) {
 
 // --- ACCIONES ---
 function setcat(c) { S.cat=c; S.menu=null; render(); }
+function setFeedTab(tab) {
+  if (tab === 'explorar') { goExplore(); return; }
+  S.feedTab = tab;
+  S.menu = null;
+  render();
+}
+window.setFeedTab = setFeedTab;
 function setComposeCat(c) {
   S.composeCat = c;
   // Actualizar solo las pills sin re-render completo (evita flash del textarea)
