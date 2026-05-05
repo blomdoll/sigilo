@@ -14,6 +14,10 @@
 //  CREATE POLICY "read all" ON global_chat FOR SELECT USING (true);
 //  CREATE POLICY "insert own" ON global_chat FOR INSERT WITH CHECK (auth.uid()::text = user_id);
 //  CREATE POLICY "delete own" ON global_chat FOR DELETE USING (auth.uid()::text = user_id);
+//
+//  IMPORTANTE — habilitar Realtime en Supabase:
+//  En el dashboard: Database → Replication → supabase_realtime publication
+//  → agregar la tabla global_chat
 // =============================================
 
 (function() {
@@ -27,15 +31,18 @@
     channel: null,
     loading: false,
     atBottom: true,
+    // IDs temporales de mensajes propios enviados optimísticamente
+    // (para evitar duplicarlos cuando llega el evento Realtime)
+    pendingIds: new Set(),
   };
 
   const CHAT_LIMIT = 80;
   const MAX_MSG = 300;
 
-  // ---- Esperar a que S.me esté listo ----
+  // ---- Esperar a que S.me y window.db estén listos ----
   function waitForAuth(cb, tries = 0) {
-    if (window.S && window.S.me) { cb(); return; }
-    if (tries > 60) return;
+    if (window.S && window.S.me && window.db) { cb(); return; }
+    if (tries > 80) return;
     setTimeout(() => waitForAuth(cb, tries + 1), 300);
   }
 
@@ -49,7 +56,6 @@
 
   // ---- Inyectar HTML del botón y panel ----
   function injectChatHTML() {
-    // Evitar duplicados
     if (document.getElementById('chat-bubble')) return;
 
     // --- Botón flotante (escritorio) ---
@@ -67,7 +73,7 @@
     bubble.onclick = toggleChat;
     document.body.appendChild(bubble);
 
-    // --- Botón móvil (esquina derecha del header) ---
+    // --- Botón móvil en el header ---
     const mobBtn = document.createElement('button');
     mobBtn.id = 'chat-mob-btn';
     mobBtn.className = 'chat-mob-btn';
@@ -80,7 +86,6 @@
       <span id="chat-mob-badge" class="chat-badge chat-badge-mob" style="display:none"></span>
     `;
     mobBtn.onclick = toggleChat;
-    // Insertar en el header, a la derecha del logo
     const header = document.querySelector('header');
     if (header) header.appendChild(mobBtn);
 
@@ -121,7 +126,7 @@
     document.body.appendChild(panel);
   }
 
-  // ---- Bind eventos de input ----
+  // ---- Bind eventos ----
   function bindEvents() {
     // Enter para enviar
     document.addEventListener('keydown', e => {
@@ -134,7 +139,7 @@
       }
     });
 
-    // Detectar si el usuario está al fondo del scroll
+    // Detectar scroll position
     const msgs = document.getElementById('chat-messages');
     if (msgs) {
       msgs.addEventListener('scroll', () => {
@@ -148,7 +153,7 @@
       if (e.key === 'Escape' && CS.open) toggleChat();
     });
 
-    // Cerrar al hacer click fuera
+    // Cerrar al click fuera
     document.addEventListener('click', e => {
       if (!CS.open) return;
       const panel = document.getElementById('chat-panel');
@@ -173,16 +178,12 @@
 
     if (CS.open) {
       panel.style.display = 'flex';
-      // Pequeña animación de entrada
       requestAnimationFrame(() => panel.classList.add('chat-panel-open'));
       bubble && bubble.classList.add('chat-bubble-active');
       mobBtn && mobBtn.classList.add('chat-mob-active');
-      // Limpiar badge
       CS.unread = 0;
       updateBadge();
-      // Scroll al fondo
       setTimeout(() => scrollToBottom(true), 60);
-      // Focus al input
       setTimeout(() => document.getElementById('chat-input')?.focus(), 80);
     } else {
       panel.classList.remove('chat-panel-open');
@@ -195,6 +196,7 @@
   // ---- Cargar mensajes iniciales ----
   async function loadMessages() {
     CS.loading = true;
+    renderMessages(); // Muestra "cargando..."
     try {
       const { data, error } = await window.db
         .from('global_chat')
@@ -214,18 +216,44 @@
 
   // ---- Suscribirse a mensajes en tiempo real ----
   function subscribeChat() {
-    if (CS.channel) { window.db.removeChannel(CS.channel); CS.channel = null; }
-    CS.channel = window.db.channel('global_chat_realtime')
+    if (CS.channel) {
+      window.db.removeChannel(CS.channel);
+      CS.channel = null;
+    }
+
+    CS.channel = window.db
+      .channel('global_chat_realtime')
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
         table: 'global_chat',
       }, payload => {
         const msg = payload.new;
-        // Evitar duplicados
+
+        // Si es un mensaje nuestro que ya mostramos optimísticamente, solo
+        // actualizamos su ID real en el DOM (para que el botón eliminar funcione)
+        // y lo registramos en CS.messages con el id real.
+        if (CS.pendingIds.has(msg.body + '|' + msg.user_id)) {
+          CS.pendingIds.delete(msg.body + '|' + msg.user_id);
+          // Reemplazar el nodo temporal con el id real
+          const tempEl = document.getElementById('chatmsg-pending-' + btoa(msg.body).slice(0, 12));
+          if (tempEl) {
+            tempEl.id = 'chatmsg-' + msg.id;
+            // Actualizar el botón de eliminar con el id real
+            const delBtn = tempEl.querySelector('.chat-del-btn');
+            if (delBtn) delBtn.setAttribute('onclick', `window.deleteChatMsg('${msg.id}')`);
+          }
+          // Registrar en memoria con id real
+          const idx = CS.messages.findIndex(m => m._pending && m.body === msg.body && m.user_id === msg.user_id);
+          if (idx > -1) CS.messages[idx] = msg;
+          else CS.messages.push(msg);
+          return;
+        }
+
+        // Mensaje de otro usuario — evitar duplicados normales
         if (CS.messages.find(m => m.id === msg.id)) return;
+
         CS.messages.push(msg);
-        // Mantener máximo CHAT_LIMIT mensajes en memoria
         if (CS.messages.length > CHAT_LIMIT) CS.messages.shift();
 
         appendMessage(msg);
@@ -233,11 +261,8 @@
         if (CS.open) {
           if (CS.atBottom) scrollToBottom(true);
         } else {
-          // Solo sumar unread si no es nuestro propio mensaje
-          if (msg.user_id !== (window.S?.me?.id || '')) {
-            CS.unread++;
-            updateBadge();
-          }
+          CS.unread++;
+          updateBadge();
         }
       })
       .on('postgres_changes', {
@@ -249,7 +274,12 @@
         const el = document.getElementById('chatmsg-' + payload.old.id);
         if (el) el.remove();
       })
-      .subscribe();
+      .subscribe(status => {
+        // Si la suscripción falla, reintentamos tras 3s
+        if (status === 'CHANNEL_ERROR') {
+          setTimeout(subscribeChat, 3000);
+        }
+      });
   }
 
   // ---- Renderizar todos los mensajes ----
@@ -276,7 +306,6 @@
     const container = document.getElementById('chat-messages');
     if (!container) return;
 
-    // Quitar estado vacío si existe
     const empty = container.querySelector('.chat-empty');
     if (empty) empty.remove();
     const loading = container.querySelector('.chat-loading');
@@ -287,16 +316,23 @@
     const name = escChat(msg.username || 'Usuario');
     const ini = (msg.username || '?')[0].toUpperCase();
     const timeStr = chatAgo(msg.created_at);
-    const canDelete = isOwn;
 
-    // Avatar
     const avatarHtml = msg.avatar_url
       ? `<div class="chat-av"><img src="${escChat(msg.avatar_url)}" alt=""/></div>`
       : `<div class="chat-av chat-av-ini">${ini}</div>`;
 
     const el = document.createElement('div');
-    el.id = 'chatmsg-' + msg.id;
+    // ID temporal para mensajes pending, real para el resto
+    const elId = msg._pending
+      ? 'chatmsg-pending-' + btoa(msg.body).slice(0, 12)
+      : 'chatmsg-' + msg.id;
+    el.id = elId;
     el.className = `chat-msg${isOwn ? ' chat-msg-own' : ''}${animate ? ' chat-msg-in' : ''}`;
+
+    // El botón de eliminar solo aparece si ya tenemos id real (no pending)
+    const delBtn = (isOwn && !msg._pending)
+      ? `<button class="chat-del-btn" onclick="window.deleteChatMsg('${msg.id}')" title="Eliminar">×</button>`
+      : '';
 
     el.innerHTML = `
       ${!isOwn ? avatarHtml : ''}
@@ -304,7 +340,7 @@
         ${!isOwn ? `<div class="chat-msg-name" onclick="window.vprof && window.vprof('${msg.user_id}')">${name}</div>` : ''}
         <div class="chat-msg-bubble">
           <span class="chat-msg-text">${escChat(msg.body)}</span>
-          ${canDelete ? `<button class="chat-del-btn" onclick="window.deleteChatMsg('${msg.id}')" title="Eliminar">×</button>` : ''}
+          ${delBtn}
         </div>
         <div class="chat-msg-time">${timeStr}</div>
       </div>
@@ -314,7 +350,7 @@
     container.appendChild(el);
   }
 
-  // ---- Enviar mensaje ----
+  // ---- Enviar mensaje — aparece INMEDIATAMENTE (optimistic UI) ----
   async function sendChatMsg() {
     const inp = document.getElementById('chat-input');
     if (!inp) return;
@@ -325,32 +361,60 @@
     const me = window.S?.me;
     if (!me) return;
 
-    inp.value = '';
-    inp.disabled = true;
-
     const myName = me.user_metadata?.display_name || me.email || 'Usuario';
     const myAv = me.user_metadata?.avatar_url || null;
 
+    // 1. Limpiar input de inmediato
+    inp.value = '';
+
+    // 2. Crear mensaje optimista y mostrarlo YA
+    const optimisticMsg = {
+      _pending: true,
+      id: null,
+      user_id: me.id,
+      username: myName,
+      avatar_url: myAv,
+      body,
+      created_at: new Date().toISOString(),
+    };
+    CS.messages.push(optimisticMsg);
+    if (CS.messages.length > CHAT_LIMIT) CS.messages.shift();
+    appendMessage(optimisticMsg, true);
+    CS.atBottom = true;
+    scrollToBottom(false);
+
+    // 3. Marcar como pending para que Realtime no lo duplique
+    CS.pendingIds.add(body + '|' + me.id);
+
+    // 4. Hacer el INSERT real en Supabase
     try {
-      await window.db.from('global_chat').insert([{
+      const { error } = await window.db.from('global_chat').insert([{
         user_id: me.id,
         username: myName,
         avatar_url: myAv,
         body,
       }]);
-      CS.atBottom = true;
+      if (error) throw error;
     } catch(e) {
-      // Restaurar si hay error
+      // Si falla: quitar el mensaje optimista y restaurar el input
+      CS.pendingIds.delete(body + '|' + me.id);
+      CS.messages = CS.messages.filter(m => !(m._pending && m.body === body && m.user_id === me.id));
+      const tempEl = document.getElementById('chatmsg-pending-' + btoa(body).slice(0, 12));
+      if (tempEl) tempEl.remove();
       inp.value = body;
       window.toast && window.toast('Error al enviar mensaje');
     }
 
-    inp.disabled = false;
     inp.focus();
   }
 
   // ---- Eliminar mensaje propio ----
   async function deleteChatMsg(id) {
+    // Quitar del DOM y memoria de inmediato (optimistic)
+    CS.messages = CS.messages.filter(m => m.id !== id);
+    const el = document.getElementById('chatmsg-' + id);
+    if (el) el.remove();
+
     try {
       await window.db.from('global_chat').delete().eq('id', id);
     } catch(e) {
