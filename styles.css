@@ -1,4 +1,5 @@
 *{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow-y:auto;}
 :root{
   --bg:#FBF6F0;--surface:#FFF9F4;--s2:#F5EDE3;
   --w1:#C9785A;--w2:#8B4A2A;--w3:#E8C5A8;--w4:#F2DBC8;
