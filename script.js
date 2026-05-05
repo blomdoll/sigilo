@@ -1095,10 +1095,10 @@ function renderPostMenu() {
   if (!p) { el.innerHTML=''; return; }
   const { top, right } = S.menuPos;
   el.innerHTML = `<div class="pmenu" style="position:fixed;top:${top}px;right:${right}px;z-index:9999;min-width:170px">
-    <button class="mi" onclick="openEditPost('${p.id}')">✎ editar</button>
-    <button class="mi" onclick="tocol('${p.id}')">⊞ ${p.col?'quitar de colección':'guardar en colección'}</button>
-    ${p.col?`<button class="mi" onclick="openFolderPicker('${p.id}')">📁 ${p.folder_id?'mover de carpeta':'poner en carpeta'}</button>`:''}
-    <button class="mi del" onclick="confirmAction('¿Eliminar esta publicación? No se puede deshacer.',()=>dpost(${p.id}))">✕ eliminar</button>
+    <button class="mi" onclick="openEditPost('${p.id}')"><i class="fi fi-rr-edit"></i> editar</button>
+    <button class="mi" onclick="tocol('${p.id}')"><i class="fi fi-rr-apps"></i> ${p.col?'quitar de colección':'guardar en colección'}</button>
+    ${p.col?`<button class="mi" onclick="openFolderPicker('${p.id}')"><i class="fi fi-rr-folder"></i> ${p.folder_id?'mover de carpeta':'poner en carpeta'}</button>`:''}
+    <button class="mi del" onclick="confirmAction('¿Eliminar esta publicación? No se puede deshacer.',()=>dpost(${p.id}))"><i class="fi fi-rr-trash"></i> eliminar</button>
   </div>`;
 }
 
