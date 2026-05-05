@@ -572,7 +572,9 @@ function renderNotifPanel() {
       <span>notificaciones</span>
       ${S.notifs.length>0?`<button class="notif-clear" onclick="clearNotifs()">limpiar</button>`:''}
     </div>
-    ${items}
+    <div class="notif-list">
+      ${items}
+    </div>
   </div>`;
 }
 
