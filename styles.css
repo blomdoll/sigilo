@@ -743,15 +743,12 @@ header { position: relative; }
 
 @media (max-width: 640px) {
 
-  /* Ocultar nav buttons de escritorio en móvil */
-  .hnav .nbtn,
-  .hnav .nlog-out,
-  .hnav #ns {
+  /* Ocultar toda la nav de escritorio en móvil */
+  .hnav-main,
+  .hnav-actions,
+  .hnav-divider {
     display: none !important;
   }
-
-  /* Notif bell visible en móvil (dentro del bottom nav se maneja con JS) */
-  .hnav #notif-btn { display: none !important; }
   .ppage {
     padding-top: 2.8rem; /* espacio para el botón salir arriba */
   }
