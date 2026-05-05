@@ -1999,3 +1999,16 @@ if ('serviceWorker' in navigator) {
       .catch(err => console.log('Sigilo PWA: Error ❌', err));
   });
 }
+
+// Mover el botón de chat (inyectado por script_chat.js) al contenedor del header móvil
+function injectChatBtnIntoHeader() {
+  const container = document.querySelector('.mob-header-actions');
+  if (!container) return;
+  const chatBtn = document.querySelector('.chat-mob-btn');
+  if (!chatBtn || container.contains(chatBtn)) return;
+  container.appendChild(chatBtn);
+}
+// Intentar inmediatamente y también después de un pequeño delay por si script_chat carga tarde
+injectChatBtnIntoHeader();
+setTimeout(injectChatBtnIntoHeader, 500);
+setTimeout(injectChatBtnIntoHeader, 1500);
