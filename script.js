@@ -1006,7 +1006,7 @@ function rprofile() {
     <input type="file" id="avup" accept="image/*" style="display:none" onchange="havatar(event)"/>
     <div class="pinfo">
       <div class="pname">${esc(user.user_metadata?.display_name || user.display_name || user.username || user.name || user.email)}</div>
-      <div class="pbio">${esc(user.user_metadata?.bio || user.bio || 'sin biografía aún')}</div>
+      <div class="pbio">${esc(user.user_metadata?.bio || user.bio || 'sin biografía aún').replace(/\n/g, '<br/>')}</div>
       ${own ? `<button class="editbtn" onclick="openmod()">editar perfil</button>` : ''}
     </div>
     <div class="ptabs">
