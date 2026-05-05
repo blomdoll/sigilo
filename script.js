@@ -2,6 +2,7 @@
 const supabaseUrl = 'https://mgzbmpcirzeaqfzrpiro.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1nemJtcGNpcnplYXFmenJwaXJvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1NzQzNTgsImV4cCI6MjA5MzE1MDM1OH0.igJ1MqmbOSGCICdzWSqcl58zP7OTMQr3zF_g6t0F_1I';
 const db = window.supabase.createClient(supabaseUrl, supabaseKey);
+window.db = db; // Exponer globalmente para script_chat.js y otros módulos
 
 let offset = 0; 
 const PAGE_SIZE = 10; // Traeremos de 10 en 10
@@ -34,6 +35,7 @@ const S = {
   loading: false, // guard para evitar fetchPosts simultáneos
   theme: 'durazno', // tema activo
 };
+window.S = S; // Exponer globalmente para script_chat.js y otros módulos
 
 const CATS = ['todos', 'decoraciones', 'letras', 'símbolos', 'biografías', 'usernames', 'nombres'];
 const MAX_CHARS = 500;
