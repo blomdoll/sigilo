@@ -302,6 +302,14 @@ main{flex:1;padding:1.25rem;max-width:660px;margin:0 auto;width:100%;}
   background:transparent;color:var(--tx2);text-align:left;
   gap:.55rem;justify-content:flex-start;display:flex;
 }
+.mi i {
+  font-size: .88rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: inherit;
+}
 .mi:hover{background:var(--w4);color:var(--w2);}
 .mi.del{color:#954040;}
 .mi.del:hover{background:#fdf0f0;color:#833;}
