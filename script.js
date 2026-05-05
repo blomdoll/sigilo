@@ -550,7 +550,7 @@ function renderNotifPanel() {
   if (!bd) {
     bd = document.createElement('div');
     bd.id = 'notifBackdrop';
-    bd.style.cssText = 'position:fixed;inset:0;z-index:89;display:none;';
+    bd.style.cssText = 'position:fixed;inset:0;z-index:69;display:none;';
     bd.addEventListener('click', () => { S.notifOpen=false; renderNotifPanel(); });
     document.body.appendChild(bd);
   }
@@ -567,10 +567,10 @@ function renderNotifPanel() {
         </div>
         <span class="notif-time" data-ts="${n.ts}">${ago(n.ts)}</span>
       </div>`).join('');
-  el.innerHTML = `<div class="notif-panel">
+  el.innerHTML = `<div class="notif-panel" onclick="event.stopPropagation()">
     <div class="notif-head">
       <span>notificaciones</span>
-      ${S.notifs.length>0?`<button class="notif-clear" onclick="clearNotifs()">limpiar</button>`:''}
+      ${S.notifs.length>0?`<button class="notif-clear" onclick="event.stopPropagation();clearNotifs()">limpiar</button>`:''}
     </div>
     <div class="notif-list">
       ${items}
