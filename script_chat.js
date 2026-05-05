@@ -314,12 +314,7 @@
     const me = window.S?.me;
     const isOwn = me && msg.user_id === me.id;
     const name = escChat(msg.username || 'Usuario');
-    const ini = (msg.username || '?')[0].toUpperCase();
     const timeStr = chatAgo(msg.created_at);
-
-    const avatarHtml = msg.avatar_url
-      ? `<div class="chat-av"><img src="${escChat(msg.avatar_url)}" alt=""/></div>`
-      : `<div class="chat-av chat-av-ini">${ini}</div>`;
 
     const el = document.createElement('div');
     // ID temporal para mensajes pending, real para el resto
@@ -335,7 +330,6 @@
       : '';
 
     el.innerHTML = `
-      ${!isOwn ? avatarHtml : ''}
       <div class="chat-msg-content">
         ${!isOwn ? `<div class="chat-msg-name" onclick="window.vprof && window.vprof('${msg.user_id}')">${name}</div>` : ''}
         <div class="chat-msg-bubble">
@@ -344,7 +338,6 @@
         </div>
         <div class="chat-msg-time">${timeStr}</div>
       </div>
-      ${isOwn ? avatarHtml : ''}
     `;
 
     container.appendChild(el);
