@@ -1619,3 +1619,12 @@ header { position: relative; }
     font-weight: 500;
   }
 }
+
+.verified-badge {
+        color: var(--accent-color); /* Aquí ocurre la magia dinámica */
+        font-size: 0.85em;
+        margin-left: 4px;
+        vertical-align: middle;
+        display: inline-flex;
+        transition: color 0.3s ease; /* Para que el cambio de color sea suave */
+    }
