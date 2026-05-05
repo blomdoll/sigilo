@@ -945,9 +945,9 @@ function rpost(p) {
     <div class="pcontent">${esc(p.body)}</div>
     <div class="pacts">
       <button class="abtn like-btn${liked?' liked':''}" onclick="tlike('${p.id}')"><i class="${liked?'fi fi-sr-heart':'fi fi-rr-heart'}"></i> ${likes.length}</button>
-      <button class="abtn comment-btn" onclick="tcmt('${p.id}')"><i class="fi fi-rr-comment"></i> ${cmts.length}</button>
-      <button class="abtn${isSaved?' sav':''}" onclick="tsave('${p.id}')">◈ ${isSaved?'guardado':'guardar'}</button>
-      <button class="abtn copy-btn" onclick="copyPost('${p.id}')" title="copiar texto">⎘ copiar</button>
+      <button class="abtn comment-btn${copen?' active':''}" onclick="tcmt('${p.id}')"><i class="${copen?'fi fi-sr-comment':'fi fi-rr-comment'}"></i> ${cmts.length}</button>
+      <button class="abtn save-btn${isSaved?' sav':''}" onclick="tsave('${p.id}')"><i class="${isSaved?'fi fi-sr-bookmark':'fi fi-rr-bookmark'}"></i> ${isSaved?'guardado':'guardar'}</button>
+      <button class="abtn copy-btn" onclick="copyPost('${p.id}')" title="copiar texto"><i class="fi fi-rr-copy"></i> copiar</button>
     </div>
     ${copen?`<div class="csec">
       <div class="crow">
@@ -1200,13 +1200,17 @@ async function tsave(id) {
   if(i>-1){p.saved.splice(i,1);}else{p.saved.push(S.me.id);}
   // Patch solo el botón de guardar sin re-render completo
   const cid = safeId(id);
-  const pacts = document.querySelector(`#post-${cid} .pacts`);
-  if (pacts) {
-    const saveBtn = [...pacts.querySelectorAll('.abtn')].find(b => b.textContent.includes('guardar') || b.classList.contains('sav'));
-    if (saveBtn) {
-      const isSaved = p.saved.includes(S.me.id);
-      saveBtn.className = `abtn${isSaved ? ' sav' : ''}`;
-      saveBtn.textContent = `◈ ${isSaved ? 'guardado' : 'guardar'}`;
+  const saveBtn = document.querySelector(`#post-${cid} .save-btn`);
+  if (saveBtn) {
+    const isSaved = p.saved.includes(S.me.id);
+    const icon = saveBtn.querySelector('i');
+    if (icon) icon.className = isSaved ? 'fi fi-sr-bookmark' : 'fi fi-rr-bookmark';
+    const textNodes = [...saveBtn.childNodes].filter(n => n.nodeType === 3);
+    if (textNodes.length) textNodes[textNodes.length-1].textContent = ` ${isSaved ? 'guardado' : 'guardar'}`;
+    saveBtn.className = `abtn save-btn${isSaved ? ' sav' : ''}`;
+    if (isSaved && icon) {
+      icon.classList.add('pop');
+      setTimeout(() => icon.classList.remove('pop'), 260);
     }
   }
   toast(p.saved.includes(S.me.id) ? 'guardado' : 'eliminado de guardados');
@@ -1243,6 +1247,18 @@ function tcmt(id) {
   if (!card) { render(); return; }
   const p = S.posts.find(x=>x.id===id);
   if (!p) { render(); return; }
+  // Update comment button icon and class
+  const cmtBtn = card.querySelector('.pacts .comment-btn');
+  if (cmtBtn) {
+    const isOpen = S.coOpen[id];
+    const icon = cmtBtn.querySelector('i');
+    if (icon) icon.className = isOpen ? 'fi fi-sr-comment' : 'fi fi-rr-comment';
+    cmtBtn.className = `abtn comment-btn${isOpen ? ' active' : ''}`;
+    if (isOpen && icon) {
+      icon.classList.add('pop');
+      setTimeout(() => icon.classList.remove('pop'), 260);
+    }
+  }
   // Patch solo la sección de comentarios del post específico
   let csec = card.querySelector('.csec');
   if (!S.coOpen[id]) {
@@ -1271,9 +1287,6 @@ function tcmt(id) {
         <div class="cmt">${esc(c.txt)}</div>
       </div>
     </div>`).join('')}`;
-  // Update comment count button
-  const cmtBtn = card.querySelector('.pacts .comment-btn');
-  if (cmtBtn) cmtBtn.innerHTML = `<i class="fi fi-rr-comment"></i> ${cmts.length}`;
   setTimeout(() => document.getElementById(cid)?.focus(), 30);
 }
 
@@ -1540,10 +1553,17 @@ window.copyPost = function(id) {
     // Cambiar ícono del botón momentáneamente
     const btn = document.querySelector(`#post-${safeId(id)} .copy-btn`);
     if (btn) {
-      const orig = btn.innerHTML;
-      btn.innerHTML = '✓ copiado';
-      btn.classList.add('copy-done');
-      setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('copy-done'); }, 1400);
+      const icon = btn.querySelector('i');
+      if (icon) {
+        icon.className = 'fi fi-sr-copy';
+        btn.classList.add('copy-done');
+        icon.classList.add('pop');
+        setTimeout(() => {
+          icon.className = 'fi fi-rr-copy';
+          btn.classList.remove('copy-done');
+          icon.classList.remove('pop');
+        }, 1400);
+      }
     }
   };
   if (navigator.clipboard && navigator.clipboard.writeText) {
