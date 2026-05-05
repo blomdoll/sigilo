@@ -5,6 +5,38 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sigilo - Red social de arte en texto</title>
   
+  <!-- Favicon dinámico SVG: cambia color según tema de la app y preferencia del sistema -->
+  <link id="favicon" rel="icon" type="image/svg+xml" href="">
+  <script>
+    (function() {
+      var THEME_COLORS = {
+        durazno:'#C9785A', medianoche:'#8B7CF8', bosque:'#5A8A5C',
+        cielo:'#4A86C8', rosa:'#C45C80', ambar:'#C8880A',
+        pizarra:'#5A6E8A', nocturno:'#D4956A'
+      };
+      function getAccentColor() {
+        try { var s=localStorage.getItem('sigilo_theme'); if(s&&THEME_COLORS[s]) return THEME_COLORS[s]; } catch(e){}
+        return (window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches) ? '#8B7CF8' : '#C9785A';
+      }
+      function makeFavicon(color) {
+        var svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
+          +'<path d="M16 3L17.4 13.2L27 16L17.4 18.8L16 29L14.6 18.8L5 16L14.6 13.2Z" fill="'+color+'"/>'
+          +'<path d="M25 4L25.8 8.5L30 9.5L25.8 10.5L25 15L24.2 10.5L20 9.5L24.2 8.5Z" fill="'+color+'" opacity=".7"/>'
+          +'<path d="M8 19L8.6 22.4L12 23.2L8.6 24L8 27.4L7.4 24L4 23.2L7.4 22.4Z" fill="'+color+'" opacity=".55"/>'
+          +'</svg>';
+        return 'data:image/svg+xml,'+encodeURIComponent(svg);
+      }
+      function updateFavicon() {
+        var el=document.getElementById('favicon');
+        if(el) el.href=makeFavicon(getAccentColor());
+      }
+      updateFavicon();
+      if(window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', updateFavicon);
+      window.updateFavicon=updateFavicon;
+      window._FAVICON_THEME_COLORS=THEME_COLORS;
+    })();
+  </script>
+  
   <!-- Google Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
   
@@ -121,5 +153,19 @@
   <script src="script.js"></script>
   <script src="script_follows.js"></script>
   <script src="script_chat.js"></script>
+  <script>
+    // Conectar el favicon dinámico con el sistema de temas de sigilo
+    (function() {
+      var _orig = window.applyTheme;
+      window.applyTheme = function(themeId) {
+        if(_orig) _orig(themeId);
+        if(window.updateFavicon) {
+          // Inyectar el color del nuevo tema antes de llamar updateFavicon
+          try { localStorage.setItem('sigilo_theme', themeId); } catch(e) {}
+          window.updateFavicon();
+        }
+      };
+    })();
+  </script>
 </body>
 </html>
