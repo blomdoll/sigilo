@@ -1385,3 +1385,174 @@ header { position: relative; }
 }
 .chat-send-btn:hover { background: var(--w2); transform: scale(1.05); }
 .chat-send-btn:active { transform: scale(.95); }
+
+/* ================================================================
+   FEATURE: EXPLORAR / DESTACADOS
+   ================================================================ */
+.explore-banner {
+  background: var(--surface);
+  border: 1px solid var(--bd);
+  border-radius: var(--r);
+  padding: 1.1rem 1.25rem;
+  margin-bottom: 1.1rem;
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  cursor: pointer;
+  transition: border-color .18s, box-shadow .18s;
+}
+.explore-banner:hover {
+  border-color: var(--w3);
+  box-shadow: 0 4px 16px rgba(44,24,16,.07);
+}
+.explore-banner-icon {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  background: var(--w4);
+  color: var(--w1);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  font-size: 1rem;
+}
+.explore-banner-text { flex: 1; }
+.explore-banner-title {
+  font-size: .88rem; font-weight: 500; color: var(--tx);
+  margin-bottom: .1rem;
+}
+.explore-banner-sub { font-size: .74rem; color: var(--tx3); }
+.explore-banner-arrow { color: var(--tx3); font-size: .85rem; }
+
+/* Página explorar */
+.explore-page { }
+.explore-header {
+  display: flex; align-items: center; gap: .65rem;
+  margin-bottom: 1.1rem;
+}
+.explore-back-btn {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: var(--s2);
+  border: 1px solid var(--bd);
+  color: var(--tx2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: .9rem;
+  flex-shrink: 0;
+  transition: background .15s, color .15s;
+}
+.explore-back-btn:hover { background: var(--w4); color: var(--w2); }
+.explore-title { font-family: var(--fd); font-size: 1.5rem; color: var(--tx); }
+.explore-sub { font-size: .8rem; color: var(--tx3); margin-bottom: 1.1rem; }
+.explore-empty {
+  text-align: center; padding: 2.5rem 1rem; color: var(--tx3);
+}
+.explore-empty .ei { font-size: 1.75rem; margin-bottom: .4rem; }
+.explore-empty .el { font-size: .82rem; }
+
+/* ================================================================
+   FEATURE: LIKES EN COMENTARIOS
+   ================================================================ */
+.cm {
+  position: relative;
+}
+.cmt-like-btn {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: .22rem;
+  font-size: .68rem;
+  color: var(--tx3);
+  font-family: var(--fb);
+  padding: .1rem .3rem;
+  border-radius: 6px;
+  transition: color .15s, background .15s;
+  margin-left: .2rem;
+}
+.cmt-like-btn:hover { color: var(--w1); background: var(--w4); }
+.cmt-like-btn.liked { color: var(--w1); }
+.cmt-like-btn i {
+  font-size: .72rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  transition: transform .15s;
+}
+.cmt-like-btn.liked i { transform: scale(1.15); }
+
+@keyframes cmt-like-pop {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.5); }
+  100% { transform: scale(1.15); }
+}
+.cmt-like-btn.pop i { animation: cmt-like-pop .22s ease; }
+
+/* ================================================================
+   FEATURE: ANCLAR POSTS EN PERFIL
+   ================================================================ */
+.pin-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  font-size: .68rem;
+  color: var(--w1);
+  font-weight: 500;
+  margin-bottom: .5rem;
+  padding: .2rem .55rem;
+  background: var(--w4);
+  border-radius: 10px;
+  border: 1px solid var(--w3);
+}
+.pin-indicator i {
+  font-size: .7rem;
+  display: inline-flex;
+  align-items: center;
+}
+
+.pinned-section {
+  margin-bottom: .5rem;
+}
+
+.pinned-section .pcard {
+  border-color: var(--w3);
+  box-shadow: 0 2px 12px rgba(44,24,16,.06);
+}
+
+/* Botón anclar en menú */
+.mi.pin-active {
+  color: var(--w1);
+}
+.mi.pin-active i { color: var(--w1); }
+
+/* Botón explorar en nav móvil — reemplaza alguno existente */
+.mob-nav-btn.explore-active { color: var(--w1) !important; }
+
+/* Destacados badge en explorar */
+.explore-trending-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+  font-size: .68rem;
+  color: var(--w1);
+  background: var(--w4);
+  border: 1px solid var(--w3);
+  padding: .15rem .5rem;
+  border-radius: 10px;
+  margin-left: .4rem;
+  vertical-align: middle;
+}
+
+/* Encabezado de sección explorar */
+.explore-section-label {
+  font-size: .72rem;
+  color: var(--tx3);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  margin: .5rem 0 .8rem;
+  padding-left: .2rem;
+}
+
+@media (max-width: 640px) {
+  /* En móvil el banner de explorar tiene padding menor */
+  .explore-banner { padding: .85rem 1rem; }
+}
