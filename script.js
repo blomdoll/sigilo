@@ -34,10 +34,17 @@ const S = {
   composeCat: null, // categoría seleccionada en compose (null = primera por defecto)
   loading: false, // guard para evitar fetchPosts simultáneos
   theme: 'durazno', // tema activo
+  pinnedPosts: {}, // { userId: postId } — un post anclado por usuario
+  explorePage: false, // si estamos en la página explorar
 };
 window.S = S; // Exponer globalmente para script_chat.js y otros módulos
 
 const CATS = ['todos', 'decoraciones', 'letras', 'símbolos', 'biografías', 'usernames', 'nombres'];
+
+// Cache para explorar/destacados
+let _exploreCache = null;
+let _exploreCacheTs = 0;
+const EXPLORE_TTL = 5 * 60 * 1000; // 5 min
 const MAX_CHARS = 500;
 const uid = () => 'x' + Math.random().toString(36).slice(2);
 
@@ -328,6 +335,8 @@ function boot() {
 
   // Mostrar feed con skeletons mientras carga
   S.page = 'feed';
+  S.explorePage = false;
+  loadPinnedPosts();
   nav();
   // Renderizar estructura del feed con skeletons
   const mc = document.getElementById('mc');
@@ -706,7 +715,7 @@ function saveNavState() {
   try { sessionStorage.setItem('sigilo_nav', JSON.stringify({ page: S.page, puid: S.puid, ptab: S.ptab })); } catch(e) {}
 }
 
-function gofeed() { S.page='feed'; S.puid=null; S.menu=null; renderPostMenu(); saveNavState(); document.title='inicio · sigilo'; nav(); render(); }
+function gofeed() { S.page='feed'; S.explorePage=false; S.puid=null; S.menu=null; renderPostMenu(); saveNavState(); document.title='inicio · sigilo'; nav(); render(); }
 function goprofile() { S.page='profile'; S.puid=S.me.id; S.ptab='posts'; S.menu=null; renderPostMenu(); saveNavState(); document.title='perfil · sigilo'; nav(); render(); }
 async function vprof(id) {
   S.page='profile'; S.puid=id; S.ptab='posts'; S.menu=null; saveNavState(); document.title='perfil · sigilo'; nav();
@@ -726,8 +735,9 @@ async function vprof(id) {
 }
 
 function nav() {
-  ['nf','np','nc'].forEach(id => { const el=document.getElementById(id); if(el) el.className='nbtn'; });
-  if (S.page === 'feed') { const el=document.getElementById('nf'); if(el) el.className='nbtn on'; }
+  ['nf','ne','np','nc'].forEach(id => { const el=document.getElementById(id); if(el) el.className='nbtn'; });
+  if (S.page === 'feed' && !S.explorePage) { const el=document.getElementById('nf'); if(el) el.className='nbtn on'; }
+  else if (S.explorePage) { const el=document.getElementById('ne'); if(el) el.className='nbtn on'; }
   else if (S.page === 'profile') { const el=document.getElementById('np'); if(el) el.className='nbtn on'; }
   else if (S.page === 'settings') { const el=document.getElementById('nc'); if(el) el.className='nbtn on'; }
 }
@@ -911,6 +921,16 @@ function rfeed() {
       <button class="pbtn" onclick="post()">publicar</button>
     </div>
   </div>
+  <div class="explore-banner" onclick="goExplore()">
+    <div class="explore-banner-icon">
+      <i class="fi fi-rr-star"></i>
+    </div>
+    <div class="explore-banner-text">
+      <div class="explore-banner-title">explorar destacados</div>
+      <div class="explore-banner-sub">publicaciones populares de las últimas 48 horas</div>
+    </div>
+    <div class="explore-banner-arrow"><i class="fi fi-rr-angle-right"></i></div>
+  </div>
   <div class="cats">${CATS.map(c=>`<button class="catb${S.cat===c?' on':''}" onclick="setcat('${c}')">${c}</button>`).join('')}</div>
   ${posts.length===0
     ? `<div class="empty"><div class="ei">🌸</div><div class="el">todavía no hay publicaciones aquí — sé el primero ✦</div></div>`
@@ -964,6 +984,7 @@ function rpost(p) {
           <div class="cma">
             <span>${esc(c.un)}</span>
             <span class="cmt-time" data-ts="${c.t}">${ago(c.t)}</span>
+            <button class="cmt-like-btn${Array.isArray(c.likes)&&c.likes.includes(S.me.id)?' liked':''}" data-cmt-like="${c.id}" onclick="tlikeCmt('${p.id}','${c.id}')"><i class="${Array.isArray(c.likes)&&c.likes.includes(S.me.id)?'fi fi-sr-heart':'fi fi-rr-heart'}"></i><span class="cmt-like-count">${c.likes&&c.likes.length>0?c.likes.length:''}</span></button>
       ${c.uid === S.me.id ? `<button class="cmt-del" onclick="dcmt('${p.id}', '${c.id}')" title="eliminar comentario">✕</button>` : ''}
           </div>
           <div class="cmt">${esc(c.txt)}</div>
@@ -1016,7 +1037,7 @@ function rprofile() {
       <button class="ptab${tab === 'col' ? ' on' : ''}" onclick="stptab('col')">colecciones</button>
       ${own ? `<button class="ptab${tab === 'saved' ? ' on' : ''}" onclick="stptab('saved')">guardados</button>` : ''}
     </div>
-    ${tab === 'posts' ? (myp.length ? myp.map(rpost).join('') : `<div class="empty"><div class="el">aún no hay publicaciones</div></div>`) : ''}
+    ${tab === 'posts' ? renderProfilePosts(myp, S.puid) : ''}
     ${tab === 'saved' ? (svd.length ? svd.map(rpost).join('') : `<div class="empty"><div class="el">aún no guardaste nada</div></div>`) : ''}
     ${tab === 'col' ? renderCollections(userFolders, col, own) : ''}
   </div>
@@ -1031,6 +1052,22 @@ function rprofile() {
       </div>
     </div>
   </div>` : ''}`;
+}
+
+function renderProfilePosts(myp, profileUid) {
+  const pinnedId = S.pinnedPosts[profileUid];
+  const pinned = pinnedId ? myp.find(p => p.id === pinnedId) : null;
+  const rest = pinned ? myp.filter(p => p.id !== pinnedId) : myp;
+  if (myp.length === 0) return `<div class="empty"><div class="el">aún no hay publicaciones</div></div>`;
+  let html = '';
+  if (pinned) {
+    html += `<div class="pinned-section">
+      <div class="pin-indicator"><i class="fi fi-sr-thumbtack"></i> anclado</div>
+      ${rpost(pinned)}
+    </div>`;
+  }
+  html += rest.map(rpost).join('');
+  return html;
 }
 
 function renderCollections(userFolders, col, own) {
@@ -1100,6 +1137,7 @@ function renderPostMenu() {
   const { top, right } = S.menuPos;
   el.innerHTML = `<div class="pmenu" style="position:fixed;top:${top}px;right:${right}px;z-index:9999;min-width:170px">
     <button class="mi" onclick="openEditPost('${p.id}')"><i class="fi fi-rr-edit"></i> editar</button>
+    <button class="mi${S.pinnedPosts[S.me.id]===p.id?' pin-active':''}" onclick="pinPost('${p.id}')"><i class="${S.pinnedPosts[S.me.id]===p.id?'fi fi-sr-thumbtack':'fi fi-rr-thumbtack'}"></i> ${S.pinnedPosts[S.me.id]===p.id?'desanclar':'anclar en perfil'}</button>
     <button class="mi" onclick="tocol('${p.id}')"><i class="fi fi-rr-apps"></i> ${p.col?'quitar de colección':'guardar en colección'}</button>
     ${p.col?`<button class="mi" onclick="openFolderPicker('${p.id}')"><i class="fi fi-rr-folder"></i> ${p.folder_id?'mover de carpeta':'poner en carpeta'}</button>`:''}
     <button class="mi del" onclick="confirmAction('¿Eliminar esta publicación? No se puede deshacer.',()=>dpost(${p.id}))"><i class="fi fi-rr-trash"></i> eliminar</button>
@@ -1286,6 +1324,7 @@ function tcmt(id) {
         <div class="cma">
           <span>${esc(c.un)}</span>
           <span class="cmt-time" data-ts="${c.t}">${ago(c.t)}</span>
+          <button class="cmt-like-btn${Array.isArray(c.likes)&&c.likes.includes(S.me.id)?' liked':''}" data-cmt-like="${c.id}" onclick="tlikeCmt('${id}','${c.id}')"><i class="${Array.isArray(c.likes)&&c.likes.includes(S.me.id)?'fi fi-sr-heart':'fi fi-rr-heart'}"></i><span class="cmt-like-count">${c.likes&&c.likes.length>0?c.likes.length:''}</span></button>
           ${c.uid === S.me.id ? `<button class="cmt-del" onclick="dcmt('${id}', '${c.id}')" title="eliminar comentario">✕</button>` : ''}
         </div>
         <div class="cmt">${esc(c.txt)}</div>
@@ -1343,6 +1382,7 @@ async function scmt(id) {
           <div class="cma">
             <span>${esc(nuevoComentario.un)}</span>
             <span class="cmt-time" data-ts="${nuevoComentario.t}">${ago(nuevoComentario.t)}</span>
+            <button class="cmt-like-btn" data-cmt-like="${nuevoComentario.id}" onclick="tlikeCmt('${id}','${nuevoComentario.id}')"><i class="fi fi-rr-heart"></i><span class="cmt-like-count"></span></button>
             <button class="cmt-del" onclick="dcmt('${id}', '${nuevoComentario.id}')" title="eliminar comentario">✕</button>
           </div>
           <div class="cmt">${esc(nuevoComentario.txt)}</div>
@@ -1548,11 +1588,196 @@ function setupInfiniteScroll() {
   _sentinel.observe(el);
 }
 
+
+// ======== FEATURE 1: EXPLORAR / DESTACADOS ========
+
+async function goExplore() {
+  S.explorePage = true; S.menu = null;
+  renderPostMenu();
+  document.title = 'explorar · sigilo';
+  ['nf','np','nc'].forEach(id => { const el=document.getElementById(id); if(el) el.className='nbtn'; });
+  const mc = document.getElementById('mc');
+  if (mc) {
+    const sk = `<div class="skeleton-card"><div class="sk-head"><div class="sk-line sk-avatar"></div><div class="sk-meta"><div class="sk-line short"></div><div class="sk-line tiny"></div></div></div><div class="sk-line full"></div><div class="sk-line med"></div></div>`;
+    mc.innerHTML = `<div class="explore-page">
+      <div class="explore-header">
+        <button class="explore-back-btn" onclick="closeExplore()" title="volver">
+          <i class="fi fi-rr-arrow-small-left" style="font-size:1.1rem"></i>
+        </button>
+        <div class="explore-title">explorar</div>
+      </div>
+      <div class="explore-sub">publicaciones populares de las últimas 48 horas ✦</div>
+      ${sk.repeat(5)}
+    </div>`;
+  }
+  mobSetActive('explore');
+  await fetchExplorePosts();
+}
+
+function closeExplore() {
+  S.explorePage = false;
+  gofeed();
+}
+
+async function fetchExplorePosts() {
+  const now = Date.now();
+  if (_exploreCache && (now - _exploreCacheTs) < EXPLORE_TTL) {
+    renderExplorePage(_exploreCache);
+    return;
+  }
+  try {
+    const since = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+    const { data, error } = await db
+      .from('posts')
+      .select('*')
+      .gte('created_at', since)
+      .order('created_at', { ascending: false })
+      .limit(60);
+    if (error) throw error;
+    const posts = (data || []).map(p => ({
+      ...p,
+      likes: Array.isArray(p.likes) ? p.likes : [],
+      cmts: Array.isArray(p.cmts) ? p.cmts : [],
+      saved: Array.isArray(p.saved) ? p.saved : [],
+      t: p.created_at
+    })).sort((a, b) => b.likes.length - a.likes.length).slice(0, 30);
+    posts.forEach(ep => {
+      if (!S.posts.find(p => p.id === ep.id)) S.posts.push(ep);
+    });
+    _exploreCache = posts;
+    _exploreCacheTs = Date.now();
+    renderExplorePage(posts);
+  } catch(e) {
+    const mc = document.getElementById('mc');
+    if (mc) mc.innerHTML = `<div class="explore-page">
+      <div class="explore-header">
+        <button class="explore-back-btn" onclick="closeExplore()"><i class="fi fi-rr-arrow-small-left" style="font-size:1.1rem"></i></button>
+        <div class="explore-title">explorar</div>
+      </div>
+      <div class="explore-empty"><div class="ei">⚠️</div><div class="el">no se pudo cargar. intenta de nuevo.<br><br><button class="load-more-btn" onclick="fetchExplorePosts()">reintentar</button></div></div>
+    </div>`;
+  }
+}
+
+function renderExplorePage(posts) {
+  const mc = document.getElementById('mc');
+  if (!mc || !S.explorePage) return;
+  const content = posts.length === 0
+    ? `<div class="explore-empty"><div class="ei">🌸</div><div class="el">no hay publicaciones destacadas aún — vuelve más tarde ✦</div></div>`
+    : `<div class="explore-section-label">✦ más populares hoy</div>` + posts.map((p, i) => {
+        const trendingBadge = i < 3 ? `<span class="explore-trending-badge"><i class="fi fi-rr-star" style="font-size:.62rem"></i> top ${i+1}</span>` : '';
+        return rpostExplore(p, trendingBadge);
+      }).join('');
+  mc.innerHTML = `<div class="explore-page">
+    <div class="explore-header">
+      <button class="explore-back-btn" onclick="closeExplore()" title="volver">
+        <i class="fi fi-rr-arrow-small-left" style="font-size:1.1rem"></i>
+      </button>
+      <div class="explore-title">explorar</div>
+    </div>
+    <div class="explore-sub">publicaciones populares de las últimas 48 horas ✦</div>
+    ${content}
+  </div>`;
+}
+
+function rpostExplore(p, badge) {
+  badge = badge || '';
+  const likes = Array.isArray(p.likes)?p.likes:[];
+  const saved  = Array.isArray(p.saved)?p.saved:[];
+  const cmts   = Array.isArray(p.cmts)?p.cmts:[];
+  const author = p.user_id === S.me.id
+    ? { name: S.me.user_metadata?.display_name||S.me.email, username: S.me.user_metadata?.display_name||S.me.email, avatar_url: S.me.user_metadata?.avatar_url||p.author_av||null }
+    : (S.users.find(x=>x.id===p.user_id) || { name:p.username||'Usuario', username:p.username||'Usuario', avatar_url:p.author_av||null });
+  const liked = likes.includes(S.me.id);
+  const isSaved = saved.includes(S.me.id);
+  const own = p.user_id===S.me.id;
+  const cid = safeId(p.id);
+  return `
+  <div class="pcard" id="post-${cid}">
+    <div class="phead">
+      ${avEl(author)}
+      <div style="flex:1">
+        <div class="puname" onclick="vprof('${p.user_id}')">${esc(author.username)}</div>
+        <div class="ptime" data-ts="${p.created_at}">${ago(p.created_at)}</div>
+      </div>
+      <span class="pbadge">${esc(p.category)}</span>${badge}
+      ${own?`<div class="mwrap"><button class="dotsbtn" onclick="tmenu('${p.id}',event)">...</button></div>`:''}
+    </div>
+    <div class="pcontent">${esc(p.body)}</div>
+    <div class="pacts">
+      <button class="abtn like-btn${liked?' liked':''}" onclick="tlike('${p.id}')"><i class="${liked?'fi fi-sr-heart':'fi fi-rr-heart'}"></i> ${likes.length}</button>
+      <button class="abtn comment-btn" onclick="tcmt('${p.id}')"><i class="fi fi-rr-comment"></i> ${cmts.length}</button>
+      <button class="abtn save-btn${isSaved?' sav':''}" onclick="tsave('${p.id}')"><i class="${isSaved?'fi fi-sr-bookmark':'fi fi-rr-bookmark'}"></i> ${isSaved?'guardado':'guardar'}</button>
+      <button class="abtn copy-btn" onclick="copyPost('${p.id}')" title="copiar texto"><i class="fi fi-rr-copy"></i> copiar</button>
+    </div>
+  </div>`;
+}
+
+// ======== FEATURE 2: ANCLAR POSTS EN PERFIL ========
+
+function loadPinnedPosts() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('sigilo_pinned') || '{}');
+    S.pinnedPosts = saved;
+  } catch(e) { S.pinnedPosts = {}; }
+}
+
+function savePinnedPostsToStorage() {
+  try { localStorage.setItem('sigilo_pinned', JSON.stringify(S.pinnedPosts)); } catch(e) {}
+}
+
+function pinPost(postId) {
+  postId = isNaN(postId)?postId:Number(postId);
+  const p = S.posts.find(x=>x.id===postId); if(!p) return;
+  if (p.user_id !== S.me.id) return;
+  const uid_key = S.me.id;
+  if (S.pinnedPosts[uid_key] === postId) {
+    delete S.pinnedPosts[uid_key];
+    toast('publicación desanclada');
+  } else {
+    S.pinnedPosts[uid_key] = postId;
+    toast('publicación anclada ✦');
+  }
+  savePinnedPostsToStorage();
+  S.menu = null;
+  renderPostMenu();
+  render();
+}
+
+// ======== FEATURE 3: LIKES EN COMENTARIOS ========
+
+async function tlikeCmt(postId, cmtId) {
+  postId = isNaN(postId)?postId:Number(postId);
+  const p = S.posts.find(x=>x.id===postId); if(!p) return;
+  if(!Array.isArray(p.cmts)) p.cmts=[];
+  const cmt = p.cmts.find(c=>c.id===cmtId); if(!cmt) return;
+  if(!Array.isArray(cmt.likes)) cmt.likes=[];
+  const i = cmt.likes.indexOf(S.me.id);
+  const wasLiked = i>-1;
+  if(wasLiked) cmt.likes.splice(i,1); else cmt.likes.push(S.me.id);
+  const isNowLiked = !wasLiked;
+  const btn = document.querySelector(`[data-cmt-like="${cmtId}"]`);
+  if(btn) {
+    btn.className = `cmt-like-btn${isNowLiked?' liked':''}`;
+    const icon = btn.querySelector('i');
+    if(icon) icon.className = isNowLiked?'fi fi-sr-heart':'fi fi-rr-heart';
+    const countEl = btn.querySelector('.cmt-like-count');
+    if(countEl) countEl.textContent = cmt.likes.length > 0 ? cmt.likes.length : '';
+    if(isNowLiked) {
+      btn.classList.add('pop');
+      setTimeout(()=>btn.classList.remove('pop'),260);
+    }
+  }
+  const {error} = await db.from('posts').update({cmts:p.cmts}).eq('id',postId);
+  if(error) {
+    toast('Error al dar like');
+    if(wasLiked) cmt.likes.push(S.me.id); else { const idx=cmt.likes.indexOf(S.me.id); if(idx>-1) cmt.likes.splice(idx,1); }
+  }
+}
+
 // --- COPY con feedback visual ---
 const _origCopyPost = copyPost;
 window.copyPost = function(id) {
-  id = isNaN(id)?id:Number(id);
-  const p = S.posts.find(x=>x.id===id); if(!p) return;
   const doFeedback = () => {
     // Cambiar ícono del botón momentáneamente
     const btn = document.querySelector(`#post-${safeId(id)} .copy-btn`);
@@ -1613,6 +1838,8 @@ window.toggleNotif=toggleNotif; window.goNotif=goNotif; window.clearNotifs=clear
 window.confirmAction=confirmAction; window.renderConfirmModal=renderConfirmModal;
 window.togglePw=togglePw; window.renderPostMenu=renderPostMenu;
 window.gosettings=gosettings; window.selectTheme=selectTheme; window.rsettings=rsettings;
+window.goExplore=goExplore; window.closeExplore=closeExplore; window.fetchExplorePosts=fetchExplorePosts;
+window.pinPost=pinPost; window.tlikeCmt=tlikeCmt; window.renderProfilePosts=renderProfilePosts;
 
 showLoading();
 // Usar refreshSession en lugar de getSession para garantizar token válido y metadatos frescos
@@ -1630,11 +1857,11 @@ db.auth.refreshSession().then(({data, error})=>{
 // ======== MOBILE BOTTOM NAV ========
 
 function mobSetActive(tab) {
-  ['mob-home','mob-search','mob-notif','mob-profile','mob-settings'].forEach(id => {
+  ['mob-home','mob-explore','mob-search','mob-notif','mob-profile','mob-settings'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.remove('active');
   });
-  const map = { home:'mob-home', search:'mob-search', notif:'mob-notif', profile:'mob-profile', settings:'mob-settings' };
+  const map = { home:'mob-home', explore:'mob-explore', search:'mob-search', notif:'mob-notif', profile:'mob-profile', settings:'mob-settings' };
   const el = document.getElementById(map[tab]);
   if (el) el.classList.add('active');
 }
@@ -1720,7 +1947,8 @@ const _origNav = nav;
 window.nav = function() {
   _origNav();
   // Sincronizar mob-nav active
-  if (S.page === 'feed') mobSetActive('home');
+  if (S.explorePage) mobSetActive('explore');
+  else if (S.page === 'feed') mobSetActive('home');
   else if (S.page === 'profile') mobSetActive('profile');
   else if (S.page === 'settings') mobSetActive('settings');
 };
