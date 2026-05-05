@@ -189,11 +189,10 @@ main{flex:1;padding:1.25rem;max-width:660px;margin:0 auto;width:100%;}
   transition: color .18s, background .15s, transform .12s;
 }
 .like-btn i {
-  font-size: .95rem;
+  font-size: .88rem;
   line-height: 1;
   display: inline-flex;
   align-items: center;
-  /* hereda el color del botón */
   color: inherit;
   transition: color .18s, transform .15s;
 }
@@ -204,32 +203,81 @@ main{flex:1;padding:1.25rem;max-width:660px;margin:0 auto;width:100%;}
 .like-btn:not(.liked):hover i {
   transform: scale(1.1);
 }
-/* Al hacer click — pequeña animación de pulso */
-.like-btn.pop i {
-  animation: like-pop .25s ease;
+
+/* Botón de comentario */
+.comment-btn {
+  gap: .32rem;
+  transition: color .18s, background .15s;
 }
+.comment-btn i {
+  font-size: .88rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+  transition: color .18s, transform .15s;
+}
+.comment-btn.active i {
+  color: var(--w1);
+  transform: scale(1.15);
+}
+.comment-btn:not(.active):hover i {
+  transform: scale(1.1);
+}
+
+/* Botón de guardar */
+.save-btn {
+  gap: .32rem;
+  transition: color .18s, background .15s;
+}
+.save-btn i {
+  font-size: .88rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+  transition: color .18s, transform .15s;
+}
+.save-btn.sav i {
+  color: var(--w1);
+  transform: scale(1.15);
+}
+.save-btn:not(.sav):hover i {
+  transform: scale(1.1);
+}
+
+/* Botón de copiar */
+.copy-btn {
+  gap: .32rem;
+  transition: color .18s, background .15s;
+}
+.copy-btn i {
+  font-size: .88rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+  transition: color .18s, transform .15s;
+}
+.copy-btn.copy-done i {
+  color: var(--w1);
+  transform: scale(1.15);
+}
+.copy-btn:hover i {
+  transform: scale(1.1);
+}
+
+/* Animación pop — compartida por todos los iconos de acción */
 @keyframes like-pop {
   0%   { transform: scale(1); }
-  50%  { transform: scale(1.35); }
+  50%  { transform: scale(1.38); }
   100% { transform: scale(1.15); }
 }
-
-/* Ajuste para el botón de comentario — alineación con el corazón */
-.comment-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: .32rem; /* Mismo gap que el like-btn */
-    transition: color .18s, background .15s;
-}
-
-.comment-btn i {
-    font-size: .95rem; /* Mismo tamaño que el like-btn i */
-    line-height: 1;
-    display: inline-flex;
-    align-items: center;
-    /* Ajuste de posición: */
-    position: relative;
-    top: 1px; /* Muévelo a 0px o 2px si sientes que aún no está nivelado */
+.like-btn.pop i,
+.comment-btn i.pop,
+.save-btn i.pop,
+.copy-btn i.pop {
+  animation: like-pop .25s ease;
 }
 
 /* dots menu */
