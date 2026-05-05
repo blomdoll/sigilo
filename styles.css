@@ -1036,7 +1036,6 @@ header { position: relative; }
   justify-content: center;
   transition: background .18s, transform .18s, box-shadow .18s;
   cursor: pointer;
-  position: fixed; /* re-assert */
 }
 .chat-bubble:hover {
   background: var(--w2);
