@@ -40,14 +40,14 @@
 const ANNOUNCE_CONFIG = {
   // ─── EDITA AQUÍ ──────────────────────────────────────────────
   id:      'anuncio-unicode01',   // ← cambia esto para cada anuncio nuevo
-  active:  false,                  // ← pon true para activarlo
+  active:  true,                  // ← pon true para activarlo
 
   emoji:   '✦',
   label:   'anuncio parroquial',
   title:   'Compatibilidad con UNICODE',
   // ⚠ IMPORTANTE: los saltos de línea van con \n dentro de la cadena,
   //   NO con saltos de línea literales (esos rompen el JS).
-  message: 'Tal vez hayas notado que algunos caracteres no se muestran correctamente.\nEsto se debe a que el sistema de renderizado que usamos no soporta todos los caracteres UNICODE.\nEstoy trabajando en una solución para mejorar esto en futuras actualizaciones. ¡Gracias por su paciencia!',
+  message: 'Tal vez hayas notado que algunos caracteres no se muestran correctamente.\nEsto se debe a que el sistema de renderizado que se usa no soporta todos los caracteres UNICODE.\nEstoy trabajando en una solución para mejorar esto en futuras actualizaciones. ¡Gracias por su paciencia!',
   date:    '06 mayo 2026',
   btnText: 'entendido ✦',
   btnUrl:  '',                    // URL opcional; dejar '' para solo cerrar
