@@ -312,6 +312,11 @@ function boot() {
   const app = document.getElementById('app');
   app.style.display = 'flex'; app.style.flexDirection = 'column'; app.style.minHeight = '100%';
 
+  // ── ANUNCIOS: iniciar sistema de popup al arrancar ──────────────
+  // Para publicar un anuncio, edita ANNOUNCE_CONFIG en script_announce.js
+  if (typeof initAnnounce === 'function') initAnnounce();
+  // ───────────────────────────────────────────────────────────────
+
   // Restaurar la pagina donde estaba el usuario antes de refrescar
   try {
     const saved = JSON.parse(sessionStorage.getItem('sigilo_nav') || 'null');
