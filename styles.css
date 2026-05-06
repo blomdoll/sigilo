@@ -837,6 +837,16 @@ header { position: relative; }
   .mob-nav-btn:hover,
   .mob-nav-btn.active { color: var(--w1); }
 
+  .mob-nav-btn.active::after {
+    content: '';
+    display: block;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--w1);
+    margin-top: 4px;
+  }
+
   /* ---- Mobile search panel — rediseñado ---- */
   .mob-search-panel {
     position: fixed;
