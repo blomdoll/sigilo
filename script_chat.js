@@ -36,7 +36,7 @@
     pendingIds: new Set(),
   };
 
-  const CHAT_LIMIT = 80;
+  const CHAT_LIMIT = 20;
   const MAX_MSG = 300;
 
   // ---- Esperar a que S.me y window.db estén listos ----
