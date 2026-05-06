@@ -8,7 +8,7 @@ html,body{height:100%;overflow-y:auto;}
   --fd:'Playfair Display',serif;--fb:'DM Sans',sans-serif;
 }
 body{background:var(--bg);color:var(--tx);font-family:var(--fb);font-size:15px;line-height:1.5;}
-input,textarea,select{font-family:var(--fb);font-size:14px;color:var(--tx);}
+input,textarea,select{font-family:var(--fb),'Noto Sans Symbols','Noto Sans Symbols 2','Segoe UI Symbol','Apple Symbols',sans-serif;font-size:14px;color:var(--tx);}
 
 /* ---- reset ALL button defaults ---- */
 button{
@@ -171,7 +171,7 @@ main{flex:1;padding:1.25rem;max-width:660px;margin:0 auto;width:100%;}
 .puname:hover{color:var(--w1);}
 .ptime{font-size:.7rem;color:var(--tx3);}
 .pbadge{font-size:.68rem;padding:.18rem .6rem;border-radius:10px;background:var(--w4);color:var(--w2);}
-.pcontent{font-family:var(--fd);font-size:1rem;line-height:1.75;color:var(--tx);white-space:pre-wrap;word-break:break-word;margin-bottom:.9rem;}
+.pcontent{font-family:var(--fd),'Noto Sans Symbols','Noto Sans Symbols 2','Noto Sans','Segoe UI Symbol','Apple Symbols',sans-serif;font-size:1rem;line-height:1.75;color:var(--tx);white-space:pre-wrap;word-break:break-word;margin-bottom:.9rem;unicode-bidi:plaintext;}
 
 /* action buttons on posts */
 .pacts{display:flex;gap:.35rem;align-items:center;}
