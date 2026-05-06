@@ -325,6 +325,13 @@ function boot() {
       loadNotifs();
       return;
     }
+    if (saved && saved.page === 'explore') {
+      fetchFolders();
+      loadNotifs();
+      loadPinnedPosts();
+      goExplore();
+      return;
+    }
     if (saved && saved.page === 'settings') {
       S.page = 'settings';
       nav(); render();
@@ -1634,9 +1641,10 @@ function setupInfiniteScroll() {
 // ======== FEATURE 1: EXPLORAR / DESTACADOS ========
 
 async function goExplore() {
-  S.explorePage = true; S.menu = null;
+  S.explorePage = true; S.page = 'feed'; S.menu = null;
   renderPostMenu();
   document.title = 'explorar · sigilo';
+  try { sessionStorage.setItem('sigilo_nav', JSON.stringify({ page: 'explore' })); } catch(e) {}
   ['nf','np','nc'].forEach(id => { const el=document.getElementById(id); if(el) el.className='nbtn'; });
   const mc = document.getElementById('mc');
   if (mc) {
