@@ -10,11 +10,14 @@
   background: rgba(0,0,0,.45);
   backdrop-filter: blur(3px);
   -webkit-backdrop-filter: blur(3px);
-  z-index: 9000;
+  /* ⚠ z-index debe superar el mob-nav (que usa ~1000) y cualquier otro panel */
+  z-index: 9999;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 1.25rem;
+  /* En móvil, el área segura inferior puede tapar la tarjeta */
+  padding-bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
   opacity: 0;
   transition: opacity .25s ease;
   pointer-events: none;
@@ -37,6 +40,9 @@
   transform: translateY(18px) scale(.97);
   transition: transform .28s cubic-bezier(.22,1,.36,1), opacity .25s ease;
   opacity: 0;
+  /* Evitar que la tarjeta se extienda fuera de pantalla en móvil */
+  max-height: calc(100vh - 2.5rem - env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
 }
 .announce-overlay.visible .announce-card {
   transform: translateY(0) scale(1);
@@ -61,6 +67,7 @@
   border: 1px solid var(--bd);
   transition: background .15s, color .15s, transform .15s;
   flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
 }
 .announce-close:hover {
   background: var(--w4);
@@ -144,6 +151,7 @@
   border: none;
   transition: background .15s, transform .12s;
   white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
 }
 .announce-btn:hover {
   background: var(--w2);
@@ -167,11 +175,18 @@
   box-shadow: 0 20px 60px rgba(0,0,0,.45), 0 0 0 1px var(--bd), 0 4px 24px rgba(139,124,248,.08);
 }
 
-/* ---- responsive ---- */
+/* ---- responsive / móvil ---- */
 @media (max-width: 480px) {
+  .announce-overlay {
+    /* En móvil, alinear la tarjeta un poco más arriba del centro
+       para que no quede tapada por el teclado o el mob-nav */
+    align-items: flex-start;
+    padding-top: max(3.5rem, env(safe-area-inset-top, 1.5rem));
+  }
   .announce-card {
     padding: 1.65rem 1.35rem 1.4rem;
     border-radius: 16px;
+    max-height: calc(100vh - 8rem - env(safe-area-inset-bottom, 0px));
   }
   .announce-title {
     font-size: 1.1rem;
