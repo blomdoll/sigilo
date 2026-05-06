@@ -320,7 +320,7 @@ function boot() {
       S.puid = saved.puid;
       S.ptab = saved.ptab || 'posts';
       nav(); render();
-      fetchPosts();
+      fetchProfilePosts(saved.puid);
       fetchFolders();
       loadNotifs();
       return;
@@ -434,6 +434,30 @@ async function fetchPosts(reset = true) {
     render();
   }
 }
+
+async function fetchProfilePosts(userId) {
+  try {
+    const { data, error } = await db.from('posts')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    if (error || !data) return;
+    // Mezclar con S.posts sin duplicar
+    const existingIds = new Set(S.posts.map(p => p.id));
+    const newPosts = data
+      .map(p => ({
+        ...p,
+        likes: Array.isArray(p.likes) ? p.likes : [],
+        cmts: Array.isArray(p.cmts) ? p.cmts : [],
+        saved: Array.isArray(p.saved) ? p.saved : [],
+        t: p.created_at
+      }))
+      .filter(p => !existingIds.has(p.id));
+    S.posts = [...newPosts, ...S.posts].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    if (S.page === 'profile' && S.puid === userId) render();
+  } catch(e) {}
+}
+window.fetchProfilePosts = fetchProfilePosts;
 
 async function loadMore() {
   const btn = document.querySelector('.load-more-btn');
@@ -717,7 +741,11 @@ function saveNavState() {
 }
 
 function gofeed() { S.page='feed'; S.explorePage=false; S.feedTab='todos'; S.puid=null; S.menu=null; renderPostMenu(); saveNavState(); document.title='inicio · sigilo'; nav(); render(); }
-function goprofile() { S.page='profile'; S.puid=S.me.id; S.ptab='posts'; S.menu=null; renderPostMenu(); saveNavState(); document.title='perfil · sigilo'; nav(); render(); }
+function goprofile() {
+  S.page='profile'; S.puid=S.me.id; S.ptab='posts'; S.menu=null;
+  renderPostMenu(); saveNavState(); document.title='perfil · sigilo'; nav(); render();
+  fetchProfilePosts(S.me.id);
+}
 async function vprof(id) {
   S.page='profile'; S.puid=id; S.ptab='posts'; S.menu=null; saveNavState(); document.title='perfil · sigilo'; nav();
   // Si no es nuestro propio perfil, intentar cargar datos desde profiles
@@ -733,6 +761,7 @@ async function vprof(id) {
     } catch(e) {}
   }
   render();
+  fetchProfilePosts(id);
 }
 
 function nav() {
@@ -1809,8 +1838,10 @@ window.copyPost = function(id) {
     }
   };
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(p.body).then(() => { toast('copiado'); doFeedback(); }).catch(() => { fallbackCopy(p.body); doFeedback(); });
-  } else { fallbackCopy(p.body); doFeedback(); }
+    const post = S.posts.find(x => x.id === (isNaN(id)?id:Number(id)));
+    if (!post) return;
+    navigator.clipboard.writeText(post.body).then(() => { toast('copiado'); doFeedback(); }).catch(() => { fallbackCopy(post.body); doFeedback(); });
+  } else { _origCopyPost(id); doFeedback(); }
 };
 
 // --- NOTIF BADGE EN MÓVIL ---
@@ -1853,6 +1884,7 @@ window.togglePw=togglePw; window.renderPostMenu=renderPostMenu;
 window.gosettings=gosettings; window.selectTheme=selectTheme; window.rsettings=rsettings;
 window.goExplore=goExplore; window.closeExplore=closeExplore; window.fetchExplorePosts=fetchExplorePosts;
 window.pinPost=pinPost; window.tlikeCmt=tlikeCmt; window.renderProfilePosts=renderProfilePosts;
+window.fetchProfilePosts=fetchProfilePosts;
 
 showLoading();
 // Usar refreshSession en lugar de getSession para garantizar token válido y metadatos frescos
