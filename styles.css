@@ -1061,62 +1061,6 @@ header { position: relative; }
   .theme-grid { grid-template-columns:repeat(2,1fr); }
 }
 
-/* ================================================================
-   CHAT GLOBAL
-   ================================================================ */
-
-/* ---- Botón flotante ESCRITORIO ---- */
-.chat-bubble {
-  position: fixed;
-  bottom: 1.5rem;
-  right: 1.5rem;
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  background: var(--w1);
-  color: #fff;
-  box-shadow: 0 4px 20px rgba(0,0,0,.2);
-  z-index: 200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background .18s, transform .18s, box-shadow .18s;
-  cursor: pointer;
-}
-.chat-bubble:hover {
-  background: var(--w2);
-  transform: scale(1.08);
-  box-shadow: 0 6px 24px rgba(0,0,0,.26);
-}
-.chat-bubble-active {
-  background: var(--w2) !important;
-  transform: scale(1.04) !important;
-}
-/* Ocultar en móvil */
-@media (max-width: 640px) {
-  .chat-bubble { display: none !important; }
-}
-
-/* ---- Botón móvil en el header ---- */
-.chat-mob-btn {
-  display: none;
-  position: relative;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--tx3);
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: background .15s, color .15s;
-  flex-shrink: 0;
-}
-.chat-mob-btn:hover,
-.chat-mob-active {
-  background: var(--w4) !important;
-  color: var(--w1) !important;
-}
 
 /* Contenedor de botones de acción en header móvil (búsqueda + chat) */
 .mob-header-actions {
