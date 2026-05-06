@@ -19,7 +19,7 @@
 
      title    → Título principal del anuncio.
 
-     message  → Cuerpo del mensaje. Puedes usar saltos de línea (\n).
+     message  → Cuerpo del mensaje. Usa \n para saltos de línea.
 
      date     → Fecha a mostrar (texto libre, ej: "mayo 2025")
 
@@ -39,21 +39,18 @@
 
 const ANNOUNCE_CONFIG = {
   // ─── EDITA AQUÍ ──────────────────────────────────────────────
-  id:      'anuncio-unicode01',        // ← cambia esto para cada anuncio nuevo
-  active:  true,               // ← pon true para activarlo
+  id:      'anuncio-unicode01',   // ← cambia esto para cada anuncio nuevo
+  active:  false,                  // ← pon true para activarlo
 
   emoji:   '✦',
   label:   'anuncio parroquial',
   title:   'Compatibilidad con UNICODE',
-  message: 'Tal vez hayas notado que algunos caracteres
-            no se muestran correctamente. 
-            Esto se debe a que el sistema de renderizado
-            que usamos no soporta todos los caracteres UNICODE.
-            Estoy trabajando en una solución para mejorar esto
-            en futuras actualizaciones. ¡Gracias por su paciencia!',
+  // ⚠ IMPORTANTE: los saltos de línea van con \n dentro de la cadena,
+  //   NO con saltos de línea literales (esos rompen el JS).
+  message: 'Tal vez hayas notado que algunos caracteres no se muestran correctamente.\nEsto se debe a que el sistema de renderizado que usamos no soporta todos los caracteres UNICODE.\nEstoy trabajando en una solución para mejorar esto en futuras actualizaciones. ¡Gracias por su paciencia!',
   date:    '06 mayo 2026',
   btnText: 'entendido ✦',
-  btnUrl:  '',                  // URL opcional; dejar '' para solo cerrar
+  btnUrl:  '',                    // URL opcional; dejar '' para solo cerrar
   // ─────────────────────────────────────────────────────────────
 };
 
@@ -82,11 +79,30 @@ function closeAnnounce() {
   }, 300);
 }
 
+// Escapa HTML pero respeta los saltos de línea (\n → los deja como \n)
+// El CSS usa white-space:pre-wrap para renderizarlos como saltos reales.
+function _escMsg(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+  // No tocamos \n: white-space:pre-wrap los mostrará como saltos de línea.
+}
+
+// Escapa HTML para atributos y texto simple (sin saltos)
+function _esc(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 // Crea e inyecta el popup en el DOM
 function _buildAnnouncePopup() {
   const c = ANNOUNCE_CONFIG;
 
-  // Formatear mensaje (saltos de línea → ya manejados con white-space:pre-wrap)
   const msg = c.message || '';
 
   // Determinar acción del botón
@@ -106,7 +122,7 @@ function _buildAnnouncePopup() {
         </div>
       </div>
       <div class="announce-divider"></div>
-      <div class="announce-body">${_esc(msg)}</div>
+      <div class="announce-body">${_escMsg(msg)}</div>
       <div class="announce-footer">
         <span class="announce-date"><span class="announce-brand-star">✦</span>sigilo · ${_esc(c.date || '')}</span>
         <button class="announce-btn" onclick="${btnAction}">${_esc(c.btnText || 'entendido')}</button>
@@ -133,15 +149,6 @@ function _buildAnnouncePopup() {
   document.addEventListener('keydown', onEsc);
 }
 
-// Función auxiliar para escapar HTML
-function _esc(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
 // Punto de entrada principal: llama esto cuando el usuario ya está logueado
 function initAnnounce() {
   if (!ANNOUNCE_CONFIG.active) return;   // desactivado → no hacer nada
@@ -153,3 +160,7 @@ function initAnnounce() {
     _announceMarkSeen();                 // marcar como visto inmediatamente
   }, 800);
 }
+
+// Exponer globalmente
+window.closeAnnounce = closeAnnounce;
+window.initAnnounce = initAnnounce;
