@@ -2,10 +2,10 @@
 const supabaseUrl = 'https://mgzbmpcirzeaqfzrpiro.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1nemJtcGNpcnplYXFmenJwaXJvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1NzQzNTgsImV4cCI6MjA5MzE1MDM1OH0.igJ1MqmbOSGCICdzWSqcl58zP7OTMQr3zF_g6t0F_1I';
 const db = window.supabase.createClient(supabaseUrl, supabaseKey);
-window.db = db; // Exponer globalmente para script_chat.js y otros módulos
+window.db = db;
 
 let offset = 0; 
-const PAGE_SIZE = 10; // Traeremos de 10 en 10
+const PAGE_SIZE = 10;
 
 const S = {
   users: [], 
@@ -38,7 +38,7 @@ const S = {
   explorePage: false, // si estamos en la página explorar
   feedTab: 'todos', // tab activa en el feed: 'todos' | 'explorar' | 'siguiendo'
 };
-window.S = S; // Exponer globalmente para script_chat.js y otros módulos
+window.S = S; // Expone globalmente para script_chat.js y otros módulos
 
 const CATS = ['todos', 'decoraciones', 'letras', 'símbolos', 'biografías', 'usernames', 'nombres'];
 
@@ -51,7 +51,7 @@ const uid = () => 'x' + Math.random().toString(36).slice(2);
 
 const ago = ts => {
   if (!ts) return '';
-  // Fuerza interpretación UTC: agrega Z si el string no tiene zona horaria
+  
   const normalized = (typeof ts === 'string' && !ts.endsWith('Z') && !ts.includes('+')) ? ts + 'Z' : ts;
   const d = Date.now() - new Date(normalized).getTime();
   if (isNaN(d) || d < 0) return 'ahora';
@@ -749,12 +749,12 @@ function saveNavState() {
 
 function gofeed() { S.page='feed'; S.explorePage=false; S.feedTab='todos'; S.puid=null; S.menu=null; renderPostMenu(); saveNavState(); document.title='inicio · sigilo'; nav(); render(); }
 function goprofile() {
-  S.page='profile'; S.puid=S.me.id; S.ptab='posts'; S.menu=null;
+  S.page='profile'; S.explorePage=false; S.puid=S.me.id; S.ptab='posts'; S.menu=null;
   renderPostMenu(); saveNavState(); document.title='perfil · sigilo'; nav(); render();
   fetchProfilePosts(S.me.id);
 }
 async function vprof(id) {
-  S.page='profile'; S.puid=id; S.ptab='posts'; S.menu=null; saveNavState(); document.title='perfil · sigilo'; nav();
+  S.page='profile'; S.explorePage=false; S.puid=id; S.ptab='posts'; S.menu=null; saveNavState(); document.title='perfil · sigilo'; nav();
   // Si no es nuestro propio perfil, intentar cargar datos desde profiles
   if (id !== S.me.id && !S.users.find(u => u.id === id)) {
     try {
@@ -773,8 +773,8 @@ async function vprof(id) {
 
 function nav() {
   ['nf','ne','np','nc'].forEach(id => { const el=document.getElementById(id); if(el) el.className='nbtn'; });
-  if (S.page === 'feed' && !S.explorePage) { const el=document.getElementById('nf'); if(el) el.className='nbtn on'; }
-  else if (S.explorePage) { const el=document.getElementById('ne'); if(el) el.className='nbtn on'; }
+  if (S.explorePage) { const el=document.getElementById('ne'); if(el) el.className='nbtn on'; }
+  else if (S.page === 'feed') { const el=document.getElementById('nf'); if(el) el.className='nbtn on'; }
   else if (S.page === 'profile') { const el=document.getElementById('np'); if(el) el.className='nbtn on'; }
   else if (S.page === 'settings') { const el=document.getElementById('nc'); if(el) el.className='nbtn on'; }
 }
@@ -1645,7 +1645,7 @@ async function goExplore() {
   renderPostMenu();
   document.title = 'explorar · sigilo';
   try { sessionStorage.setItem('sigilo_nav', JSON.stringify({ page: 'explore' })); } catch(e) {}
-  ['nf','np','nc'].forEach(id => { const el=document.getElementById(id); if(el) el.className='nbtn'; });
+  nav();
   const mc = document.getElementById('mc');
   if (mc) {
     const sk = `<div class="skeleton-card"><div class="sk-head"><div class="sk-line sk-avatar"></div><div class="sk-meta"><div class="sk-line short"></div><div class="sk-line tiny"></div></div></div><div class="sk-line full"></div><div class="sk-line med"></div></div>`;
@@ -2001,9 +2001,9 @@ window.nav = function() {
   _origNav();
   // Sincronizar mob-nav active
   if (S.explorePage) mobSetActive('explore');
-  else if (S.page === 'feed') mobSetActive('home');
-  else if (S.page === 'profile') mobSetActive('profile');
   else if (S.page === 'settings') mobSetActive('settings');
+  else if (S.page === 'profile') mobSetActive('profile');
+  else mobSetActive('home');
 };
 
 // Patch render() para inyectar botón logout en perfil
@@ -2040,7 +2040,6 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// Mover el botón de chat (inyectado por script_chat.js) al contenedor del header móvil
 function injectChatBtnIntoHeader() {
   const container = document.querySelector('.mob-header-actions');
   if (!container) return;
