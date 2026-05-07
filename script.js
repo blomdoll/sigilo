@@ -1183,7 +1183,7 @@ function rprofile() {
       username: authorData?.username || 'Usuario',
       display_name: authorData?.username || 'Usuario',
       avatar_url: authorData?.author_av || null,
-      bio: ''
+      bio: undefined  // undefined = aún no cargó; '' = usuario sin bio
     };
   }
 
@@ -1194,8 +1194,9 @@ function rprofile() {
   const bioRaw = own
     ? (S.me.user_metadata?.bio || S.me.bio || '')
     : (user.bio || '');
-  // Si el perfil ajeno aún no tiene datos de S.users (cargando), mostrar placeholder
-  const bioLoading = !own && !S.users.find(x => x.id === S.puid);
+  // Solo mostrar "cargando..." si es perfil ajeno Y user.bio es undefined (aún no llegaron datos del fetch)
+  // Si bio es '' (cadena vacía), el usuario simplemente no escribió bio — mostrar "sin biografía aún"
+  const bioLoading = !own && (user.bio === undefined);
   const bioDisplay = bioLoading
     ? '<span style="color:var(--tx3);font-style:italic;font-size:.8rem">cargando...</span>'
     : esc(bioRaw || 'sin biografía aún').replace(/\n/g, '<br/>');
