@@ -1,4 +1,3 @@
-// 1. Configuración de conexión
 const supabaseUrl = 'https://mgzbmpcirzeaqfzrpiro.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1nemJtcGNpcnplYXFmenJwaXJvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1NzQzNTgsImV4cCI6MjA5MzE1MDM1OH0.igJ1MqmbOSGCICdzWSqcl58zP7OTMQr3zF_g6t0F_1I';
 const db = window.supabase.createClient(supabaseUrl, supabaseKey);
@@ -319,7 +318,7 @@ async function refreshMyAvatarUrl() {
   } catch(e) {}
 }
 
-function boot() {
+async function boot() {
   hideLoading();
   document.getElementById('auth').style.display = 'none';
   const app = document.getElementById('app');
@@ -340,7 +339,39 @@ function boot() {
       S.page = 'profile';
       S.puid = saved.puid;
       S.ptab = saved.ptab || 'posts';
-      nav(); render();
+      nav();
+      // Mostrar skeleton mientras cargamos datos del perfil
+      const mc = document.getElementById('mc');
+      if (mc) {
+        const sk = `<div class="skeleton-card"><div class="sk-head"><div class="sk-line sk-avatar"></div><div class="sk-meta"><div class="sk-line short"></div><div class="sk-line tiny"></div></div></div><div class="sk-line full"></div><div class="sk-line med"></div></div>`;
+        mc.innerHTML = `<div class="ppage" style="padding-top:1.25rem"><div class="pavwrap"><div class="pav" style="background:var(--w3)"></div></div><div class="pinfo" style="text-align:center;padding:0 1rem"><div style="height:1.2rem;width:120px;background:var(--w3);border-radius:8px;margin:.5rem auto"></div><div style="height:.85rem;width:200px;background:var(--w3);border-radius:8px;margin:.4rem auto .9rem"></div></div>${sk.repeat(3)}</div>`;
+      }
+      // Si es perfil ajeno, fetchear datos antes de renderizar
+      if (saved.puid !== S.me?.id) {
+        try {
+          const { data } = await db.from('profiles')
+            .select('id,username,display_name,avatar_url,avatar_path,bio')
+            .eq('id', saved.puid).single();
+          if (data) {
+            let avatarUrl = data.avatar_url;
+            if (data.avatar_path) {
+              const signed = await getSignedAvatarUrl(data.id, data.avatar_path);
+              if (signed) avatarUrl = signed;
+            }
+            const profile = {
+              id: data.id,
+              username: data.display_name || data.username,
+              display_name: data.display_name || data.username,
+              avatar_url: avatarUrl,
+              bio: data.bio || '',
+              _ts: Date.now()
+            };
+            const existing = S.users.findIndex(u => u.id === saved.puid);
+            if (existing > -1) S.users[existing] = profile; else S.users.push(profile);
+          }
+        } catch(e) {}
+      }
+      render();
       fetchProfilePosts(saved.puid);
       fetchFolders();
       loadNotifs();
@@ -752,7 +783,7 @@ async function searchUsers() {
         // Usar avatar_url directo + onerror para caer a iniciales si expira
         return `<div class="s-row" onclick="goSearchUser('${u.id}')">
           ${u.avatar_url
-            ? `<div class="av" data-ini="${ini}"><img src="${esc(u.avatar_url)}" alt="" onerror="this.style.display='none';this.parentNode.classList.add('av-fallback')"/></div>`
+            ? `<div class="av"><img src="${esc(u.avatar_url)}" alt="" onerror="this.outerHTML='<span>${ini}</span>'"/></div>`
             : `<div class="av">${ini}</div>`}
           <span class="s-name">${esc(name)}</span>
         </div>`;
@@ -833,8 +864,8 @@ function avEl(user, big = false, canEdit = false) {
   const overlay = (big && canEdit) ? '<div class="pavov">cambiar foto</div>' : '';
 
   if (avatarUrl) {
-    // onerror: si la URL firmada expiró o falla, mostrar iniciales como fallback
-    return `<div class="${cls}" data-ini="${ini}"><img src="${esc(avatarUrl)}" alt="" onerror="this.style.display='none';this.parentNode.classList.add('av-fallback')"/>${overlay}</div>`;
+    // onerror: reemplaza la imagen con un span de iniciales si la URL falla o expiró
+    return `<div class="${cls}"><img src="${esc(avatarUrl)}" alt="" onerror="this.outerHTML='<span>${ini}</span>'"/>${overlay}</div>`;
   }
   return `<div class="${cls}">${ini}${overlay}</div>`;
 }
@@ -1027,9 +1058,14 @@ function rpost(p) {
   const saved  = Array.isArray(p.saved)?p.saved:[];
   const cmts   = Array.isArray(p.cmts)?p.cmts:[];
   // Si es nuestro propio post, leer siempre el nombre actual de S.me para reflejar cambios sin recargar
+  // Para posts propios: usar datos frescos de S.me (avatar siempre actualizado)
+  // Para posts ajenos: preferir S.users (tiene URLs frescas de vprof) antes que author_av de DB (puede expirar)
+  const _cachedAuthor = p.user_id !== S.me.id ? S.users.find(x=>x.id===p.user_id) : null;
   const author = p.user_id === S.me.id
-    ? { name: S.me.user_metadata?.display_name||S.me.email, username: S.me.user_metadata?.display_name||S.me.email, avatar_url: S.me.user_metadata?.avatar_url||p.author_av||null }
-    : (S.users.find(x=>x.id===p.user_id) || { name:p.username||'Usuario', username:p.username||'Usuario', avatar_url:p.author_av||null });
+    ? { name: S.me.user_metadata?.display_name||S.me.email, username: S.me.user_metadata?.display_name||S.me.email, avatar_url: S.me.user_metadata?.avatar_url||null }
+    : (_cachedAuthor
+        ? { name: _cachedAuthor.display_name||_cachedAuthor.username, username: _cachedAuthor.display_name||_cachedAuthor.username, avatar_url: _cachedAuthor.avatar_url||p.author_av||null }
+        : { name:p.username||'Usuario', username:p.username||'Usuario', avatar_url:p.author_av||null });
   const liked = likes.includes(S.me.id);
   const isSaved = saved.includes(S.me.id);
   const own = p.user_id===S.me.id;
@@ -1583,11 +1619,11 @@ async function havatar(e) {
 
   S.me.user_metadata.avatar_url=signedUrl;
   S.me.user_metadata.avatar_path=path;
-  await db.from('posts').update({author_av:signedUrl}).eq('user_id',S.me.id);
-  // Sincronizar path en profiles (guardamos path, no URL que expira)
-  // Guardar avatar_path (permanente) en profiles. La URL firmada se regenera al visitar el perfil.
+  // NO guardamos signedUrl en author_av de posts — esa URL expira en 1h y rompe avatares en el feed.
+  // Los posts del propio usuario usan S.me.user_metadata.avatar_url (siempre fresco).
+  // Guardar avatar_path (permanente) en profiles — cualquier visitante regenera URL desde aquí.
   try { await db.from('profiles').upsert([{ id: S.me.id, avatar_path: path }], { onConflict: 'id' }); } catch(e) {}
-  // Actualizar posts locales para que el cambio sea visible de inmediato
+  // Actualizar posts locales en memoria para reflejar el cambio visualmente (solo sesión actual)
   S.posts.forEach(p=>{ if(p.user_id===S.me.id) p.author_av=signedUrl; });
   render(); toast('foto actualizada');
 }
@@ -2045,7 +2081,7 @@ async function mobSearchUsers() {
         const ini = (name[0]||'?').toUpperCase();
         return `<div class="s-row" onclick="mobGoSearchUser('${u.id}')">
           ${u.avatar_url
-            ? `<div class="av" data-ini="${ini}"><img src="${esc(u.avatar_url)}" alt="" onerror="this.style.display='none';this.parentNode.classList.add('av-fallback')"/></div>`
+            ? `<div class="av"><img src="${esc(u.avatar_url)}" alt="" onerror="this.outerHTML='<span>${ini}</span>'"/></div>`
             : `<div class="av">${ini}</div>`}
           <span class="s-name">${esc(name)}</span>
         </div>`;
