@@ -324,6 +324,13 @@ async function boot() {
   const app = document.getElementById('app');
   app.style.display = 'flex'; app.style.flexDirection = 'column'; app.style.minHeight = '100%';
 
+  // Inicializar el estado del historial para que popstate funcione desde el primer momento
+  try {
+    if (!history.state) {
+      history.replaceState({ page: 'feed', puid: null, ptab: 'posts' }, '', window.location.pathname);
+    }
+  } catch(e) {}
+
   // Refrescar URL firmada del avatar al iniciar sesión (reduce egress público)
   refreshMyAvatarUrl();
 
@@ -529,12 +536,16 @@ async function loadMore() {
 
 async function logout() {
   unsubscribeNotifs();
+  if (_tsInterval) { clearInterval(_tsInterval); _tsInterval = null; }
+  if (_sentinel) { _sentinel.disconnect(); _sentinel = null; }
   await db.auth.signOut();
   S.me = null; S.notifs = []; S.notifOpen = false;
   document.getElementById('app').style.display = 'none';
   document.getElementById('auth').style.display = 'flex';
   document.getElementById('lu').value = ''; document.getElementById('lp').value = '';
   stab('login');
+  // Limpiar historial para que atrás no vuelva a una página protegida
+  try { history.replaceState(null, '', window.location.pathname); } catch(e) {}
 }
 
 // --- NOTIFICACIONES (Supabase Realtime) ---
@@ -771,20 +782,27 @@ async function searchUsers() {
   searchTimeout = setTimeout(async () => {
     try {
       const { data, error } = await db.from('profiles')
-        .select('id,username,display_name,avatar_url')
+        .select('id,username,display_name,avatar_url,avatar_path')
         .or(`username.ilike.%${q}%,display_name.ilike.%${q}%`)
         .limit(10);
       if (error || !data || data.length === 0) {
         res.innerHTML = `<div class="s-empty">no se encontraron usuarios</div>`; return;
       }
-      res.innerHTML = data.map(u => {
+      // Resolver URLs de avatar (puede requerir URL firmada)
+      const usersWithAv = await Promise.all(data.map(async u => {
+        let av = u.avatar_url;
+        if (u.avatar_path) {
+          const signed = await getSignedAvatarUrl(u.id, u.avatar_path);
+          if (signed) av = signed;
+        }
+        return { ...u, _resolved_av: av };
+      }));
+      res.innerHTML = usersWithAv.map(u => {
         const name = u.display_name || u.username || '?';
-        const ini = (name[0]||'?').toUpperCase();
-        // Usar avatar_url directo + onerror para caer a iniciales si expira
+        const ini = (name[0]||'?').toUpperCase().replace(/'/g,'&#39;');
+        const av = u._resolved_av;
         return `<div class="s-row" onclick="goSearchUser('${u.id}')">
-          ${u.avatar_url
-            ? `<div class="av"><img src="${esc(u.avatar_url)}" alt="" onerror="this.outerHTML='<span>${ini}</span>'"/></div>`
-            : `<div class="av">${ini}</div>`}
+          ${avEl({ display_name: name, avatar_url: av })}
           <span class="s-name">${esc(name)}</span>
         </div>`;
       }).join('');
@@ -798,8 +816,39 @@ function goSearchUser(id) { toggleSearch(); vprof(id); }
 
 // --- NAVEGACION ---
 function saveNavState() {
-  try { sessionStorage.setItem('sigilo_nav', JSON.stringify({ page: S.page, puid: S.puid, ptab: S.ptab })); } catch(e) {}
+  const state = { page: S.page, puid: S.puid, ptab: S.ptab };
+  try { sessionStorage.setItem('sigilo_nav', JSON.stringify(state)); } catch(e) {}
+  // Integrar con History API para que el botón atrás del browser funcione
+  try {
+    const current = history.state;
+    const isSameState = current && current.page === state.page && current.puid === state.puid;
+    if (!isSameState) {
+      history.pushState(state, '', window.location.pathname);
+    }
+  } catch(e) {}
 }
+
+// Manejar el botón atrás / adelante del navegador
+window.addEventListener('popstate', (e) => {
+  const state = e.state;
+  if (!state || !S.me) return;
+  if (state.page === 'feed') {
+    S.page = 'feed'; S.explorePage = false; S.feedTab = 'todos'; S.puid = null; S.menu = null;
+    renderPostMenu(); document.title = 'inicio · sigilo'; nav(); render();
+  } else if (state.page === 'explore') {
+    goExplore();
+  } else if (state.page === 'profile' && state.puid) {
+    if (state.puid === S.me.id) {
+      S.page = 'profile'; S.puid = S.me.id; S.ptab = state.ptab || 'posts'; S.menu = null;
+      renderPostMenu(); document.title = 'perfil · sigilo'; nav(); render();
+      fetchProfilePosts(S.me.id);
+    } else {
+      vprof(state.puid);
+    }
+  } else if (state.page === 'settings') {
+    gosettings();
+  }
+});
 
 function gofeed() { S.page='feed'; S.explorePage=false; S.feedTab='todos'; S.puid=null; S.menu=null; renderPostMenu(); saveNavState(); document.title='inicio · sigilo'; nav(); render(); }
 function goprofile() {
@@ -809,6 +858,8 @@ function goprofile() {
 }
 async function vprof(id) {
   S.page='profile'; S.explorePage=false; S.puid=id; S.ptab='posts'; S.menu=null; saveNavState(); document.title='perfil · sigilo'; nav();
+  // Render inmediato con lo que hay (puede estar vacío → se ve "cargando...")
+  render();
   // Para perfiles ajenos: re-fetchear si los datos tienen más de 10 min o no existen
   if (id !== S.me.id) {
     const cached = S.users.find(u => u.id === id);
@@ -835,11 +886,12 @@ async function vprof(id) {
           };
           const existing = S.users.findIndex(u => u.id === id);
           if (existing > -1) S.users[existing] = profile; else S.users.push(profile);
+          // Re-render para mostrar bio y avatar recién cargados
+          if (S.page === 'profile' && S.puid === id) render();
         }
       } catch(e) {}
     }
   }
-  render();
   fetchProfilePosts(id);
 }
 
@@ -855,7 +907,7 @@ function avEl(user, big = false, canEdit = false) {
   const cls = big ? 'pav' : 'av';
   // Obtenemos el nombre para las iniciales
   const name = user?.user_metadata?.display_name || user?.display_name || user?.name || user?.username || user?.email || '?';
-  const ini = name.split(' ').map(w => w[0]).filter(Boolean).join('').toUpperCase().slice(0, 2) || '?';
+  const ini = (name.split(' ').map(w => w[0]).filter(Boolean).join('').toUpperCase().slice(0, 2) || '?').replace(/'/g, '&#39;');
   
   // Buscamos la URL del avatar en las distintas propiedades posibles
   const avatarUrl = user?.user_metadata?.avatar_url || user?.avatar_url || user?.av || null;
@@ -864,10 +916,11 @@ function avEl(user, big = false, canEdit = false) {
   const overlay = (big && canEdit) ? '<div class="pavov">cambiar foto</div>' : '';
 
   if (avatarUrl) {
-    // onerror: reemplaza la imagen con un span de iniciales si la URL falla o expiró
-    return `<div class="${cls}"><img src="${esc(avatarUrl)}" alt="" onerror="this.outerHTML='<span>${ini}</span>'"/>${overlay}</div>`;
+    // onerror usa una función global para evitar problemas de escaping de comillas en el atributo
+    const safeUrl = esc(avatarUrl);
+    return `<div class="${cls}"><img src="${safeUrl}" alt="" loading="lazy" onerror="this.style.display='none';this.parentNode.dataset.ini=this.parentNode.dataset.ini||'${ini}';if(!this.parentNode.querySelector('span')){var s=document.createElement('span');s.textContent=this.parentNode.dataset.ini||'?';this.parentNode.appendChild(s);}"/>${overlay}</div>`;
   }
-  return `<div class="${cls}">${ini}${overlay}</div>`;
+  return `<div class="${cls}"><span>${ini}</span>${overlay}</div>`;
 }
 
 function render() {
@@ -1141,7 +1194,11 @@ function rprofile() {
   const bioRaw = own
     ? (S.me.user_metadata?.bio || S.me.bio || '')
     : (user.bio || '');
-  const bioDisplay = esc(bioRaw || 'sin biografía aún').replace(/\n/g, '<br/>');
+  // Si el perfil ajeno aún no tiene datos de S.users (cargando), mostrar placeholder
+  const bioLoading = !own && !S.users.find(x => x.id === S.puid);
+  const bioDisplay = bioLoading
+    ? '<span style="color:var(--tx3);font-style:italic;font-size:.8rem">cargando...</span>'
+    : esc(bioRaw || 'sin biografía aún').replace(/\n/g, '<br/>');
 
   const tab = S.ptab;
   const myp = S.posts.filter(p => p.user_id === S.puid);
@@ -1746,8 +1803,8 @@ function setupInfiniteScroll() {
   const el = document.getElementById('scroll-sentinel');
   if (!el) return;
   _sentinel = new IntersectionObserver(entries => {
-    if (entries[0].isIntersecting) loadMore();
-  }, { rootMargin: '200px' });
+    if (entries[0].isIntersecting && !S.loading) loadMore();
+  }, { rootMargin: '300px' });
   _sentinel.observe(el);
 }
 
@@ -1808,6 +1865,31 @@ async function fetchExplorePosts() {
     posts.forEach(ep => {
       if (!S.posts.find(p => p.id === ep.id)) S.posts.push(ep);
     });
+
+    // Batch-fetch perfiles de autores que no están en caché para tener avatares frescos
+    const unknownAuthorIds = [...new Set(
+      posts.map(p => p.user_id).filter(uid => uid !== S.me.id && !S.users.find(u => u.id === uid))
+    )];
+    if (unknownAuthorIds.length > 0) {
+      try {
+        const { data: profilesData } = await db.from('profiles')
+          .select('id,username,display_name,avatar_url,avatar_path,bio')
+          .in('id', unknownAuthorIds);
+        if (profilesData) {
+          await Promise.all(profilesData.map(async d => {
+            let avatarUrl = d.avatar_url;
+            if (d.avatar_path) {
+              const signed = await getSignedAvatarUrl(d.id, d.avatar_path);
+              if (signed) avatarUrl = signed;
+            }
+            const profile = { id: d.id, username: d.display_name || d.username, display_name: d.display_name || d.username, avatar_url: avatarUrl, bio: d.bio || '', _ts: Date.now() };
+            const existing = S.users.findIndex(u => u.id === d.id);
+            if (existing > -1) S.users[existing] = profile; else S.users.push(profile);
+          }));
+        }
+      } catch(e) {}
+    }
+
     _exploreCache = posts;
     _exploreCacheTs = Date.now();
     renderExplorePage(posts);
@@ -2070,19 +2152,24 @@ async function mobSearchUsers() {
   mobSearchTimeout = setTimeout(async () => {
     try {
       const { data, error } = await db.from('profiles')
-        .select('id,username,display_name,avatar_url')
+        .select('id,username,display_name,avatar_url,avatar_path')
         .or(`username.ilike.%${q}%,display_name.ilike.%${q}%`)
         .limit(10);
       if (error || !data || data.length === 0) {
         res.innerHTML = `<div class="s-empty">no se encontraron usuarios</div>`; return;
       }
-      res.innerHTML = data.map(u => {
+      const usersWithAv = await Promise.all(data.map(async u => {
+        let av = u.avatar_url;
+        if (u.avatar_path) {
+          const signed = await getSignedAvatarUrl(u.id, u.avatar_path);
+          if (signed) av = signed;
+        }
+        return { ...u, _resolved_av: av };
+      }));
+      res.innerHTML = usersWithAv.map(u => {
         const name = u.display_name || u.username || '?';
-        const ini = (name[0]||'?').toUpperCase();
         return `<div class="s-row" onclick="mobGoSearchUser('${u.id}')">
-          ${u.avatar_url
-            ? `<div class="av"><img src="${esc(u.avatar_url)}" alt="" onerror="this.outerHTML='<span>${ini}</span>'"/></div>`
-            : `<div class="av">${ini}</div>`}
+          ${avEl({ display_name: name, avatar_url: u._resolved_av })}
           <span class="s-name">${esc(name)}</span>
         </div>`;
       }).join('');
