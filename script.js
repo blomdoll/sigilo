@@ -306,11 +306,27 @@ function hideLoading() {
   if (ld) ld.style.display = 'none';
 }
 
+async function refreshMyAvatarUrl() {
+  // Si el usuario tiene un avatar_path guardado, generamos una URL firmada fresca
+  const path = S.me?.user_metadata?.avatar_path;
+  if (!path) return;
+  try {
+    const { data, error } = await db.storage.from('avatars').createSignedUrl(path, 3600);
+    if (!error && data?.signedUrl) {
+      S.me.user_metadata.avatar_url = data.signedUrl;
+      _avatarCache[S.me.id] = { url: data.signedUrl, expira: Date.now() + 55 * 60 * 1000 };
+    }
+  } catch(e) {}
+}
+
 function boot() {
   hideLoading();
   document.getElementById('auth').style.display = 'none';
   const app = document.getElementById('app');
   app.style.display = 'flex'; app.style.flexDirection = 'column'; app.style.minHeight = '100%';
+
+  // Refrescar URL firmada del avatar al iniciar sesión (reduce egress público)
+  refreshMyAvatarUrl();
 
   // ── ANUNCIOS: iniciar sistema de popup al arrancar ──────────────
   // Para publicar un anuncio, edita ANNOUNCE_CONFIG en script_announce.js
@@ -1485,6 +1501,24 @@ async function dcmt(postId, cmtId) {
 
 function upavatar() { document.getElementById('avup').click(); }
 
+// --- CACHÉ DE URLs FIRMADAS PARA AVATARES ---
+// Evita re-descargar el avatar en cada visita y reduce el egress de Supabase
+const _avatarCache = {}; // { userId: { url, expira } }
+
+async function getSignedAvatarUrl(userId, path) {
+  const ahora = Date.now();
+  // Reutilizar URL en caché si aún es válida (55 min de margen antes de la hora)
+  if (_avatarCache[userId] && _avatarCache[userId].expira > ahora) {
+    return _avatarCache[userId].url;
+  }
+  try {
+    const { data, error } = await db.storage.from('avatars').createSignedUrl(path, 3600);
+    if (error || !data?.signedUrl) return null;
+    _avatarCache[userId] = { url: data.signedUrl, expira: ahora + 55 * 60 * 1000 };
+    return data.signedUrl;
+  } catch(e) { return null; }
+}
+
 async function havatar(e) {
   const f=e.target.files[0]; if(!f) return;
   toast('subiendo foto...');
@@ -1497,25 +1531,32 @@ async function havatar(e) {
   // Usamos siempre el mismo nombre de archivo (sin extensión variable)
   // para que la URL sea estable y predecible entre dispositivos
   const path=`${S.me.id}/avatar`;
-  const {error:upErr}=await db.storage.from('avatars').upload(path,f,{upsert:true,contentType:f.type});
+  const {error:upErr}=await db.storage.from('avatars').upload(path,f,{
+    upsert:true,
+    contentType:f.type,
+    cacheControl:'31536000' // 1 año de caché en el navegador — reduce egress
+  });
   if(upErr){toast('Error al subir imagen');return;}
 
-  // URL limpia sin cache-buster — es lo que se guarda en Auth y BD
-  const {data}=db.storage.from('avatars').getPublicUrl(path);
-  const cleanUrl=data.publicUrl;
-  // Cache-buster SOLO para forzar recarga visual en el navegador actual (no se persiste)
-  const displayUrl=cleanUrl+'?t='+Date.now();
+  // Invalidar caché local para que la próxima carga use la nueva imagen
+  delete _avatarCache[S.me.id];
 
-  const {error:authErr}=await db.auth.updateUser({data:{avatar_url:cleanUrl}});
+  // Generar URL firmada (acceso autenticado — evita acceso público masivo)
+  const signedUrl = await getSignedAvatarUrl(S.me.id, path);
+  if (!signedUrl) { toast('Error al obtener URL del avatar'); return; }
+
+  // Guardamos el path en Auth y BD (no la URL completa, que expira)
+  // El path es suficiente para regenerar la URL firmada cuando se necesite
+  const {error:authErr}=await db.auth.updateUser({data:{avatar_path:path, avatar_url:signedUrl}});
   if(authErr){toast('Error al guardar avatar');return;}
 
-  // Guardar cleanUrl en Auth y BD; displayUrl solo en memoria local para esta sesión
-  S.me.user_metadata.avatar_url=displayUrl;
-  await db.from('posts').update({author_av:cleanUrl}).eq('user_id',S.me.id);
-  // Sincronizar avatar en profiles
-  try { await db.from('profiles').upsert([{ id: S.me.id, avatar_url: cleanUrl }], { onConflict: 'id' }); } catch(e) {}
-  // Actualizar posts locales con displayUrl para que el cambio sea visible de inmediato
-  S.posts.forEach(p=>{ if(p.user_id===S.me.id) p.author_av=displayUrl; });
+  S.me.user_metadata.avatar_url=signedUrl;
+  S.me.user_metadata.avatar_path=path;
+  await db.from('posts').update({author_av:signedUrl}).eq('user_id',S.me.id);
+  // Sincronizar path en profiles (guardamos path, no URL que expira)
+  try { await db.from('profiles').upsert([{ id: S.me.id, avatar_url: signedUrl, avatar_path: path }], { onConflict: 'id' }); } catch(e) {}
+  // Actualizar posts locales para que el cambio sea visible de inmediato
+  S.posts.forEach(p=>{ if(p.user_id===S.me.id) p.author_av=signedUrl; });
   render(); toast('foto actualizada');
 }
 
