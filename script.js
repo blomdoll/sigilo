@@ -1382,8 +1382,7 @@ function rCommunitySection() {
 function rfeed() {
   const posts = S.cat==='todos' ? [...S.posts] : S.posts.filter(p=>p.category===S.cat);
   const composeCat = S.composeCat || CATS[1]; // default primera categoría
-  const isComunidad = S.feedTab === 'comunidad';
-  const catsAndPosts = isComunidad ? '' : (
+  const catsAndPosts = (
     '<div class="cats">' + CATS.map(c=>'<button class="catb' + (S.cat===c?' on':'') + '" onclick="setcat(\'' + c + '\')">' + c + '</button>').join('') + '</div>' +
     (posts.length===0
       ? '<div class="empty"><div class="ei">🌸</div><div class="el">todavía no hay publicaciones aquí — sé el primero ✦</div></div>'
@@ -1392,6 +1391,10 @@ function rfeed() {
   return `
   <div class="ftitle">inicio</div>
   <div class="fsub">comparte decoraciones, letras, símbolos y más</div>
+  <div class="feed-tabs">
+    <button class="feed-tab${S.feedTab!=='siguiendo'&&S.feedTab!=='explorar'?' on':''}" onclick="setFeedTab('todos')">✦ todos</button>
+    <button class="feed-tab${S.feedTab==='siguiendo'?' on':''}" onclick="setFeedTab('siguiendo')">siguiendo</button>
+  </div>
   <div class="ccard">
     <div class="ctop">${avEl(S.me)}<textarea class="ctxt" id="ct" placeholder="comparte algo bonito..." maxlength="${MAX_CHARS}"></textarea></div>
     <div style="display:flex;justify-content:flex-end;padding:.2rem 0 0">
@@ -1414,12 +1417,7 @@ function rfeed() {
     </div>
     <div class="explore-banner-arrow"><i class="fi fi-rr-angle-right"></i></div>
   </div>
-  <div class="feed-tabs">
-    <button class="feed-tab${S.feedTab!=='siguiendo'&&S.feedTab!=='explorar'&&S.feedTab!=='comunidad'?' on':''}" onclick="setFeedTab('todos')">✦ todos</button>
-    <button class="feed-tab feed-tab-community${S.feedTab==='comunidad'?' on':''}" onclick="setFeedTab('comunidad')">comunidad</button>
-    <button class="feed-tab${S.feedTab==='siguiendo'?' on':''}" onclick="setFeedTab('siguiendo')">siguiendo</button>
-  </div>
-  ${isComunidad ? rCommunitySection() : catsAndPosts}
+  ${catsAndPosts}
   `;
 }
 
@@ -1740,27 +1738,6 @@ function setFeedTab(tab) {
   if (tab === 'explorar') { goExplore(); return; }
   S.feedTab = tab;
   S.menu = null;
-  if (tab === 'comunidad') {
-    render();
-    // Fetch community posts if not loaded yet
-    if (S.communityPosts.length === 0) {
-      fetchCommunityPosts().then(() => {
-        if (S.feedTab === 'comunidad') render();
-        setTimeout(() => {
-          const ta = document.getElementById('ct-comm');
-          const cc = document.getElementById('cc-comm');
-          if (ta && cc) ta.addEventListener('input', () => { cc.textContent = ta.value.length + '/' + MAX_CHARS; });
-        }, 50);
-      });
-    } else {
-      setTimeout(() => {
-        const ta = document.getElementById('ct-comm');
-        const cc = document.getElementById('cc-comm');
-        if (ta && cc) ta.addEventListener('input', () => { cc.textContent = ta.value.length + '/' + MAX_CHARS; });
-      }, 50);
-    }
-    return;
-  }
   render();
 }
 window.setFeedTab = setFeedTab;
