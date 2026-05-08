@@ -416,6 +416,7 @@ async function boot() {
 
   // Mostrar feed con skeletons mientras carga
   S.page = 'feed';
+  S.puid = null; // explícito: en feed no hay perfil activo
   S.explorePage = false;
   loadPinnedPosts();
   nav();
@@ -714,7 +715,12 @@ function goNotif(postId) {
 async function fetchFolders() {
   try {
     const { data, error } = await db.from('folders').select('*').order('created_at', { ascending: true });
-    if (!error && data) { S.folders = data; render(); }
+    if (!error && data) {
+      S.folders = data;
+      // Solo re-renderizar si S.puid está correctamente seteado
+      // (evita que el render async pise el estado de perfil con puid=null)
+      if (S.page !== 'profile' || S.puid) render();
+    }
   } catch(e) { S.folders = []; }
 }
 
@@ -866,16 +872,13 @@ window.addEventListener('popstate', (e) => {
 
 function gofeed() { S.page='feed'; S.explorePage=false; S.feedTab='todos'; S.puid=null; S.menu=null; renderPostMenu(); saveNavState(); document.title='inicio · sigilo'; nav(); render(); }
 function goprofile() {
-  S.page='profile'; S.explorePage=false; S.puid=S.me.id; S.ptab='posts'; S.menu=null;
-  renderPostMenu(); saveNavState(); document.title='perfil · sigilo'; nav(); render();
-  fetchProfilePosts(S.me.id);
-  // Sincronizar bio desde profiles si auth no la tiene
+  const myId = S.me.id;
+  S.page = 'profile'; S.explorePage = false; S.puid = myId; S.ptab = 'posts'; S.menu = null;
+  renderPostMenu(); saveNavState(); document.title = 'perfil · sigilo'; nav(); render();
+  fetchProfilePosts(myId);
   if (!S.me.user_metadata?.bio && !S._profileBio) {
-    db.from('profiles').select('bio').eq('id', S.me.id).single().then(({ data }) => {
-      if (data?.bio) {
-        S._profileBio = data.bio;
-        if (S.page === 'profile' && S.puid === S.me.id) render();
-      }
+    db.from('profiles').select('bio').eq('id', myId).single().then(({ data }) => {
+      if (data?.bio) { S._profileBio = data.bio; if (S.page === 'profile' && S.puid === myId) render(); }
     }).catch(() => {});
   }
 }
@@ -883,9 +886,11 @@ async function vprof(id) {
   S.page='profile'; S.explorePage=false; S.puid=id; S.ptab='posts'; S.menu=null; saveNavState(); document.title='perfil · sigilo'; nav();
   // Render inmediato con lo que hay (puede estar vacío → se ve "cargando...")
   render();
-  // Para perfiles ajenos: siempre hacer fetch para garantizar bio fresca
+  // Para perfiles ajenos: re-fetchear si los datos tienen más de 10 min o no existen
   if (id !== S.me.id) {
-    {
+    const cached = S.users.find(u => u.id === id);
+    const stale = !cached || !cached._ts || (Date.now() - cached._ts) > 10 * 60 * 1000;
+    if (stale) {
       try {
         const { data } = await db.from('profiles')
           .select('id,username,display_name,avatar_url,avatar_path,bio')
@@ -1190,6 +1195,11 @@ function rpost(p) {
 
 // PERFIL
 function rprofile() {
+  // Guardia: si puid es null (race condition con fetchFolders u otro render async),
+  // no renderizar perfil — mostrar loading hasta que puid esté disponible
+  if (!S.puid) {
+    return '<div class="ppage"><div style="text-align:center;padding:3rem;opacity:.4">cargando perfil...</div></div>';
+  }
   const own = S.puid === S.me.id;
 
   let user;
@@ -1208,20 +1218,21 @@ function rprofile() {
     };
   }
 
-  // Resolución robusta de nombre y bio
+  // Resolución robusta de nombre y bio (distintos campos según si es propio o ajeno)
   const displayName = own
     ? esc(S.me.user_metadata?.display_name || S.me.name || S.me.email || 'Usuario')
     : esc(user.display_name || user.username || user.name || 'Usuario');
-
-  // Bio: para perfil propio usa auth metadata + _profileBio (sincronizado desde profiles)
-  // Para perfil ajeno usa S.users cache poblado por vprof()
-  // NUNCA mostrar "cargando..." — si no hay bio, simplemente mostrar vacío
+  // Para perfil propio: auth metadata > _profileBio (cargado desde profiles al abrir modal) > ''
+  // Para perfil ajeno: S.users cache (cargado en vprof) > ''
   const bioRaw = own
     ? (S.me.user_metadata?.bio || S._profileBio || '')
-    : (typeof user.bio === 'string' ? user.bio : '');
-  const bioDisplay = bioRaw
-    ? esc(bioRaw).replace(/\n/g, '<br/>')
-    : '<span style="opacity:.55;font-style:italic">sin biografía aún</span>';
+    : (user.bio || '');
+  // Solo mostrar "cargando..." si es perfil ajeno Y user.bio es undefined (aún no llegaron datos del fetch)
+  // Si bio es '' (cadena vacía), el usuario simplemente no escribió bio — mostrar "sin biografía aún"
+  const bioLoading = !own && (user.bio === undefined);
+  const bioDisplay = bioLoading
+    ? '<span style="color:var(--tx3);font-style:italic;font-size:.8rem">cargando...</span>'
+    : esc(bioRaw || 'sin biografía aún').replace(/\n/g, '<br/>');
 
   const tab = S.ptab;
   const myp = S.posts.filter(p => p.user_id === S.puid);
