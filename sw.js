@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sigilo-v2';
+const CACHE_NAME = 'sigilo-v3';
 const assets = [
   '/',
   '/index.html',
