@@ -529,12 +529,20 @@ async function fetchPosts(reset = true) {
 
   let data, error;
   try {
-    ({ data, error } = await db
+    let query = db
       .from('posts')
       .select('*')
       .or('is_community.is.null,is_community.eq.false')
-      .order('created_at', { ascending: false })
-      .range(desde, hasta));
+      .order('created_at', { ascending: false });
+
+    // FIX: filtrar por categoría en la query de Supabase cuando no es "todos"
+    // Antes solo se filtraba localmente, causando categorías vacías con paginación
+    if (S.cat && S.cat !== 'todos') {
+      query = query.eq('category', S.cat);
+    }
+
+    query = query.range(desde, hasta);
+    ({ data, error } = await query);
   } catch(e) {
     error = e;
   }
@@ -600,6 +608,36 @@ async function fetchProfilePosts(userId) {
   } catch(e) {}
 }
 window.fetchProfilePosts = fetchProfilePosts;
+
+// FIX: cargar desde Supabase todos los posts donde el usuario aparece en el array "saved"
+// Necesario porque S.posts solo contiene posts paginados y los guardados podían no estar en memoria
+async function fetchSavedPosts() {
+  if (!S.me) return;
+  try {
+    const { data, error } = await db
+      .from('posts')
+      .select('*')
+      .contains('saved', [S.me.id])
+      .order('created_at', { ascending: false });
+    if (error || !data) return;
+    // Mezclar en S.posts sin duplicar
+    const existingIds = new Set(S.posts.map(p => p.id));
+    const newPosts = data
+      .map(p => ({
+        ...p,
+        likes: Array.isArray(p.likes) ? p.likes : [],
+        cmts: Array.isArray(p.cmts) ? p.cmts : [],
+        saved: Array.isArray(p.saved) ? p.saved : [],
+        t: p.created_at
+      }))
+      .filter(p => !existingIds.has(p.id));
+    if (newPosts.length > 0) {
+      S.posts = [...S.posts, ...newPosts];
+    }
+    if (S.page === 'profile' && S.puid === S.me.id && S.ptab === 'saved') render();
+  } catch(e) {}
+}
+window.fetchSavedPosts = fetchSavedPosts;
 
 async function loadMore() {
   const btn = document.querySelector('.load-more-btn');
@@ -1692,13 +1730,11 @@ function renderCollections(userFolders, col, own) {
 
 // --- ACCIONES ---
 function setcat(c) {
-  S.cat=c; S.menu=null;
-  // Si no hay posts cargados, fetchear primero (evita categorías en blanco)
-  if (S.posts.length === 0 && !S.loading) {
-    fetchPosts();
-  } else {
-    render();
-  }
+  S.cat = c;
+  S.menu = null;
+  // FIX: siempre re-fetchear al cambiar categoría para traer los posts
+  // correctos de la BD (el filtro local fallaba con paginación de 10 posts)
+  fetchPosts(true);
 }
 function setFeedTab(tab) {
   if (tab === 'explorar') { goExplore(); return; }
@@ -1735,7 +1771,11 @@ function setComposeCat(c) {
     btn.classList.toggle('on', btn.textContent.trim() === c);
   });
 }
-function stptab(t) { S.ptab=t; S.activeFolderTab=null; render(); window.scrollTo({top:0,behavior:"smooth"}); }
+function stptab(t) { S.ptab=t; S.activeFolderTab=null;
+  // FIX: cargar guardados frescos desde la BD al abrir la tab "saved"
+  // S.posts solo tiene los últimos posts paginados, no todos los guardados
+  if (t === 'saved') fetchSavedPosts();
+  render(); window.scrollTo({top:0,behavior:"smooth"}); }
 function tmenu(id,e) {
   e.stopPropagation();
   id=isNaN(id)?id:Number(id);
