@@ -968,10 +968,10 @@ function renderCommunity() {
   mc.innerHTML = `
     <div class="ftitle">comunidad</div>
     <div class="fsub">búsquedas, conversaciones y todo lo del sitio</div>
-    <div class="compose">
-      <div class="compose-head">${avEl(S.me)}<textarea id="ct-comm" class="ct" placeholder="inicia una conversación, haz una búsqueda..." maxlength="${MAX_CHARS}" oninput="this.style.height='';this.style.height=this.scrollHeight+'px'"></textarea></div>
-      <div class="compose-foot">
-        <span class="char-count" id="cc-comm">0/${MAX_CHARS}</span>
+    <div class="ccard">
+      <div class="ctop">${avEl(S.me)}<textarea id="ct-comm" class="ctxt" placeholder="inicia una conversación, haz una búsqueda..." maxlength="${MAX_CHARS}"></textarea></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:.2rem 0 0">
+        <span id="cc-comm" class="char-count">${MAX_CHARS}</span>
         <button class="pbtn" onclick="postCommunity()">publicar</button>
       </div>
     </div>
@@ -979,11 +979,16 @@ function renderCommunity() {
       ? `<div class="empty"><div class="ei">💬</div><div class="el">aún no hay publicaciones en comunidad — ¡sé el primero!</div></div>`
       : posts.map(rpost).join('')
     }`;
-  // Char counter
   const ta = document.getElementById('ct-comm');
   const cc = document.getElementById('cc-comm');
   if (ta && cc) {
-    ta.addEventListener('input', () => { cc.textContent = ta.value.length + '/' + MAX_CHARS; });
+    ta.addEventListener('input', () => {
+      ta.style.height = 'auto';
+      ta.style.height = ta.scrollHeight + 'px';
+      const rem = MAX_CHARS - ta.value.length;
+      cc.textContent = rem;
+      cc.className = 'char-count' + (rem < 50 ? ' warn' : '') + (rem < 0 ? ' over' : '');
+    });
   }
 }
 
