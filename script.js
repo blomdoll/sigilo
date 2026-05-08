@@ -1755,7 +1755,7 @@ function fallbackCopy(text) {
 
 // Helper: busca un post en S.posts O en S.communityPosts
 function findPost(id) {
-  return findPost(id) || S.communityPosts.find(x=>x.id===id) || null;
+  return S.posts.find(x=>x.id===id) || S.communityPosts.find(x=>x.id===id) || null;
 }
 window.findPost = findPost;
 
