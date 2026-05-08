@@ -1,8 +1,3 @@
-/* ================================================================
-   SIGILO — Estilos: Sistema de Seguidores/Siguiendo
-   Agrega en <head>: <link rel="stylesheet" href="styles_follows.css">
-   ================================================================ */
-
 /* ---- Tabs del feed (Todos / Siguiendo) ---- */
 .feed-tabs {
   display: flex;
@@ -216,4 +211,65 @@
   .follow-btn { font-size: .8rem; padding: .45rem 1rem; }
   .follow-list-panel { padding: .5rem; align-items: flex-end; }
   .follow-list-box { max-height: 75vh; border-radius: var(--r) var(--r) 0 0; max-width: 100%; }
+}
+
+/* ---- Bloque nombre + etiqueta dentro del modal ---- */
+.fl-name-block {
+  display: flex;
+  flex-direction: column;
+  gap: .18rem;
+  min-width: 0;
+}
+
+/* ---- Etiqueta "te sigue" / "no te sigue" ---- */
+.fl-mutual-tag {
+  font-size: .68rem;
+  font-family: var(--fb);
+  color: var(--w1);
+  letter-spacing: .02em;
+  opacity: .85;
+}
+.fl-mutual-tag.fl-mutual-no {
+  color: var(--tx3);
+  opacity: .7;
+}
+
+/* ---- Botón seguir/dejar de seguir dentro del modal ---- */
+.fl-follow-btn {
+  flex-shrink: 0;
+  padding: .32rem .75rem;
+  border-radius: var(--r2);
+  font-size: .75rem;
+  font-weight: 500;
+  font-family: var(--fb);
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+  border: 1.5px solid var(--w1);
+  background: var(--w1);
+  color: #fff;
+  white-space: nowrap;
+}
+.fl-follow-btn:hover {
+  background: var(--w2);
+  border-color: var(--w2);
+}
+.fl-follow-btn.fl-following {
+  background: transparent;
+  color: var(--tx2);
+  border-color: var(--bd);
+}
+.fl-follow-btn.fl-following:hover {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
+.fl-follow-btn:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+/* Ajuste de la fila para acomodar el botón derecho */
+.follow-list-row {
+  align-items: center;
+  gap: .6rem;
 }
