@@ -36,6 +36,7 @@ const S = {
   pinnedPosts: {}, // { userId: postId } — un post anclado por usuario
   explorePage: false, // si estamos en la página explorar
   feedTab: 'todos', // tab activa en el feed: 'todos' | 'explorar' | 'siguiendo'
+  replyTo: {}, // { postId: { cmtId, un } } — comentario al que se responde actualmente
 };
 window.S = S; // Expone globalmente para script_chat.js y otros módulos
 
@@ -1171,26 +1172,136 @@ function rpost(p) {
       <button class="abtn comment-btn${copen?' active':''}" onclick="tcmt('${p.id}')"><i class="${copen?'fi fi-sr-comment':'fi fi-rr-comment'}"></i> ${cmts.length}</button>
       <button class="abtn save-btn${isSaved?' sav':''}" onclick="tsave('${p.id}')"><i class="${isSaved?'fi fi-sr-bookmark':'fi fi-rr-bookmark'}"></i> ${isSaved?'guardado':'guardar'}</button>
       <button class="abtn copy-btn" onclick="copyPost('${p.id}')" title="copiar texto"><i class="fi fi-rr-copy"></i> copiar</button>
+      <button class="abtn share-btn" onclick="sharePost('${p.id}',event)" title="compartir"><i class="fi fi-rr-share"></i> compartir</button>
     </div>
     ${copen?`<div class="csec">
-      <div class="crow">
-        <input class="cinput" id="${cid}" placeholder="escribe un comentario..." onkeydown="if(event.key==='Enter')scmt('${p.id}')"/>
+      <div class="crow" id="crow-${cid}">
+        <div class="cinput-wrap">
+          <div class="reply-indicator" id="reply-ind-${cid}" style="display:none"></div>
+          <input class="cinput" id="${cid}" placeholder="escribe un comentario..." onkeydown="if(event.key==='Enter')scmt('${p.id}');if(event.key==='Escape')cancelReply('${p.id}')"/>
+        </div>
         <button class="sendbtn" onclick="scmt('${p.id}')">↑</button>
       </div>
-      ${cmts.map((c,ci)=>`<div class="cm">
-        <div onclick="vprof('${c.uid}')" style="cursor:pointer" title="ver perfil">${avEl({name:c.un,username:c.un,avatar_url:c.av||null})}</div>
-        <div class="cmb">
-          <div class="cma">
-            <span>${esc(c.un)}</span>
-            <span class="cmt-time" data-ts="${c.t}">${ago(c.t)}</span>
-            <button class="cmt-like-btn${Array.isArray(c.likes)&&c.likes.includes(S.me.id)?' liked':''}" data-cmt-like="${c.id}" onclick="tlikeCmt('${p.id}','${c.id}')"><i class="${Array.isArray(c.likes)&&c.likes.includes(S.me.id)?'fi fi-sr-heart':'fi fi-rr-heart'}"></i><span class="cmt-like-count">${c.likes&&c.likes.length>0?c.likes.length:''}</span></button>
-      ${c.uid === S.me.id ? `<button class="cmt-del" onclick="dcmt('${p.id}', '${c.id}')" title="eliminar comentario">✕</button>` : ''}
-          </div>
-          <div class="cmt">${esc(c.txt)}</div>
-        </div>
-      </div>`).join('')}
+      ${cmts.map((c,ci)=>renderComment(c, p.id, cid)).join('')}
     </div>`:''}
   </div>`;
+}
+
+// --- HELPER: RENDERIZAR UN COMENTARIO (con soporte de respuestas) ---
+function renderComment(c, postId, cid) {
+  const isReply = !!c.replyTo;
+  const replyLabel = isReply ? `<span class="cmt-reply-to">↳ ${esc(c.replyToName||'')}</span>` : '';
+  const likedCmt = Array.isArray(c.likes) && c.likes.includes(S.me.id);
+  return `<div class="cm${isReply?' cm-reply':''}" id="cmt-${c.id}">
+    <div onclick="vprof('${c.uid}')" style="cursor:pointer" title="ver perfil">${avEl({name:c.un,username:c.un,avatar_url:c.av||null})}</div>
+    <div class="cmb">
+      <div class="cma">
+        <span>${esc(c.un)}</span>
+        ${replyLabel}
+        <span class="cmt-time" data-ts="${c.t}">${ago(c.t)}</span>
+        <button class="cmt-like-btn${likedCmt?' liked':''}" data-cmt-like="${c.id}" onclick="tlikeCmt('${postId}','${c.id}')"><i class="${likedCmt?'fi fi-sr-heart':'fi fi-rr-heart'}"></i><span class="cmt-like-count">${c.likes&&c.likes.length>0?c.likes.length:''}</span></button>
+        <button class="cmt-reply-btn" onclick="startReply('${postId}','${c.id}','${c.un.replace(/'/g,"\\'")}',event)" title="responder">↩ responder</button>
+        ${c.uid === S.me.id ? `<button class="cmt-del" onclick="dcmt('${postId}', '${c.id}')" title="eliminar comentario">✕</button>` : ''}
+      </div>
+      <div class="cmt">${esc(c.txt)}</div>
+    </div>
+  </div>`;
+}
+
+// --- RESPONDER COMENTARIO ---
+function startReply(postId, cmtId, cmtUsername, e) {
+  if (e) e.stopPropagation();
+  postId = isNaN(postId)?postId:Number(postId);
+  const cid = safeId(postId);
+  S.replyTo[postId] = { cmtId, un: cmtUsername };
+  // Mostrar indicador de respuesta
+  const ind = document.getElementById(`reply-ind-${cid}`);
+  if (ind) {
+    ind.style.display = 'flex';
+    ind.innerHTML = `<span>↩ respondiendo a <b>${esc(cmtUsername)}</b></span><button class="reply-cancel-btn" onclick="cancelReply('${postId}')">✕</button>`;
+  }
+  // Actualizar placeholder del input
+  const inp = document.getElementById(cid);
+  if (inp) {
+    inp.placeholder = `responder a ${cmtUsername}...`;
+    inp.focus();
+  }
+}
+
+function cancelReply(postId) {
+  postId = isNaN(postId)?postId:Number(postId);
+  const cid = safeId(postId);
+  delete S.replyTo[postId];
+  const ind = document.getElementById(`reply-ind-${cid}`);
+  if (ind) ind.style.display = 'none';
+  const inp = document.getElementById(cid);
+  if (inp) inp.placeholder = 'escribe un comentario...';
+}
+
+// --- COMPARTIR POST ---
+function sharePost(id, e) {
+  if (e) e.stopPropagation();
+  id = isNaN(id)?id:Number(id);
+  // Construir URL del post
+  const base = window.location.origin + window.location.pathname;
+  const url = `${base}?post=${id}`;
+  // Menú de opciones de compartir
+  showShareMenu(id, url, e);
+}
+
+function showShareMenu(postId, url, e) {
+  // Eliminar menú previo si existe
+  const prev = document.getElementById('shareMenuPortal');
+  if (prev) prev.remove();
+
+  const btn = e?.currentTarget || e?.target;
+  const rect = btn ? btn.getBoundingClientRect() : { bottom: 100, right: 100 };
+  const menuTop = rect.bottom + 6;
+  const menuRight = window.innerWidth - rect.right;
+
+  const el = document.createElement('div');
+  el.id = 'shareMenuPortal';
+  el.innerHTML = `<div class="pmenu share-menu" style="position:fixed;top:${menuTop}px;right:${menuRight}px;z-index:9999;min-width:200px">
+    <div class="share-menu-title">compartir publicación</div>
+    <button class="mi" onclick="copyPostLink('${postId}','${encodeURIComponent(url)}')"><i class="fi fi-rr-link"></i> copiar enlace</button>
+    ${navigator.share ? `<button class="mi" onclick="nativeShare('${postId}','${encodeURIComponent(url)}')"><i class="fi fi-rr-share"></i> compartir...</button>` : ''}
+  </div>`;
+  document.body.appendChild(el);
+
+  // Cerrar al click fuera
+  setTimeout(() => {
+    const closeHandler = (ev) => {
+      if (!ev.target.closest('#shareMenuPortal') && !ev.target.closest('.share-btn')) {
+        el.remove();
+        document.removeEventListener('click', closeHandler);
+      }
+    };
+    document.addEventListener('click', closeHandler);
+  }, 10);
+}
+
+function copyPostLink(postId, encodedUrl) {
+  const url = decodeURIComponent(encodedUrl);
+  const el = document.getElementById('shareMenuPortal');
+  if (el) el.remove();
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(() => toast('enlace copiado ✦')).catch(() => fallbackCopy(url));
+  } else { fallbackCopy(url); }
+}
+
+function nativeShare(postId, encodedUrl) {
+  const url = decodeURIComponent(encodedUrl);
+  postId = isNaN(postId)?postId:Number(postId);
+  const el = document.getElementById('shareMenuPortal');
+  if (el) el.remove();
+  const p = S.posts.find(x => x.id === postId);
+  if (navigator.share) {
+    navigator.share({
+      title: 'sigilo',
+      text: p ? p.body.slice(0, 80) + (p.body.length > 80 ? '...' : '') : 'publicación en sigilo',
+      url,
+    }).catch(() => {});
+  }
 }
 
 // PERFIL
@@ -1541,23 +1652,18 @@ function tcmt(id) {
     card.appendChild(csec);
   }
   const cmts = Array.isArray(p.cmts) ? p.cmts : [];
+  const replyState = S.replyTo[id];
   csec.innerHTML = `
-    <div class="crow">
-      <input class="cinput" id="${cid}" placeholder="escribe un comentario..." onkeydown="if(event.key==='Enter')scmt('${id}')"/>
+    <div class="crow" id="crow-${cid}">
+      <div class="cinput-wrap">
+        <div class="reply-indicator" id="reply-ind-${cid}" style="${replyState ? 'display:flex' : 'display:none'}">
+          ${replyState ? `<span>↩ respondiendo a <b>${esc(replyState.un)}</b></span><button class="reply-cancel-btn" onclick="cancelReply('${id}')">✕</button>` : ''}
+        </div>
+        <input class="cinput" id="${cid}" placeholder="${replyState ? `responder a ${replyState.un}...` : 'escribe un comentario...'}" onkeydown="if(event.key==='Enter')scmt('${id}');if(event.key==='Escape')cancelReply('${id}')"/>
+      </div>
       <button class="sendbtn" onclick="scmt('${id}')">↑</button>
     </div>
-    ${cmts.map((c,ci)=>`<div class="cm">
-      <div onclick="vprof('${c.uid}')" style="cursor:pointer" title="ver perfil">${avEl({name:c.un,username:c.un,avatar_url:c.av||null})}</div>
-      <div class="cmb">
-        <div class="cma">
-          <span>${esc(c.un)}</span>
-          <span class="cmt-time" data-ts="${c.t}">${ago(c.t)}</span>
-          <button class="cmt-like-btn${Array.isArray(c.likes)&&c.likes.includes(S.me.id)?' liked':''}" data-cmt-like="${c.id}" onclick="tlikeCmt('${id}','${c.id}')"><i class="${Array.isArray(c.likes)&&c.likes.includes(S.me.id)?'fi fi-sr-heart':'fi fi-rr-heart'}"></i><span class="cmt-like-count">${c.likes&&c.likes.length>0?c.likes.length:''}</span></button>
-          ${c.uid === S.me.id ? `<button class="cmt-del" onclick="dcmt('${id}', '${c.id}')" title="eliminar comentario">✕</button>` : ''}
-        </div>
-        <div class="cmt">${esc(c.txt)}</div>
-      </div>
-    </div>`).join('')}`;
+    ${cmts.map((c)=>renderComment(c, id, cid)).join('')}`;
   setTimeout(() => document.getElementById(cid)?.focus(), 30);
 }
 
@@ -1573,6 +1679,7 @@ async function scmt(id) {
   if (!Array.isArray(p.cmts)) p.cmts = [];
 
   const myName = S.me.user_metadata?.display_name || S.me.email;
+  const replyState = S.replyTo[id];
   
   const nuevoComentario = {
     id: 'c' + Date.now() + Math.random().toString(36).slice(2, 5),
@@ -1580,7 +1687,8 @@ async function scmt(id) {
     un: myName,
     av: S.me.user_metadata?.avatar_url || null,
     txt,
-    t: new Date().toISOString()
+    t: new Date().toISOString(),
+    ...(replyState ? { replyTo: replyState.cmtId, replyToName: replyState.un } : {}),
   };
 
   p.cmts.push(nuevoComentario);
@@ -1592,6 +1700,8 @@ async function scmt(id) {
     toast('Error al comentar');
   } else {
     inp.value = '';
+    // Limpiar estado de respuesta
+    cancelReply(id);
     if (p.user_id !== S.me.id) {
       const myName2 = S.me.user_metadata?.display_name||S.me.email;
       saveNotif(p.user_id, 'comment', myName2, id, p.body);
@@ -1601,21 +1711,13 @@ async function scmt(id) {
     const card = document.getElementById(`post-${cid}`);
     const csec = card?.querySelector('.csec');
     if (csec) {
-      // Añadir el nuevo comentario al DOM
+      // Añadir el nuevo comentario al DOM usando renderComment
       const cmDiv = document.createElement('div');
-      cmDiv.className = 'cm';
-      cmDiv.innerHTML = `
-        <div onclick="vprof('${nuevoComentario.uid}')" style="cursor:pointer" title="ver perfil">${avEl({name:nuevoComentario.un,username:nuevoComentario.un,avatar_url:nuevoComentario.av||null})}</div>
-        <div class="cmb">
-          <div class="cma">
-            <span>${esc(nuevoComentario.un)}</span>
-            <span class="cmt-time" data-ts="${nuevoComentario.t}">${ago(nuevoComentario.t)}</span>
-            <button class="cmt-like-btn" data-cmt-like="${nuevoComentario.id}" onclick="tlikeCmt('${id}','${nuevoComentario.id}')"><i class="fi fi-rr-heart"></i><span class="cmt-like-count"></span></button>
-            <button class="cmt-del" onclick="dcmt('${id}', '${nuevoComentario.id}')" title="eliminar comentario">✕</button>
-          </div>
-          <div class="cmt">${esc(nuevoComentario.txt)}</div>
-        </div>`;
-      csec.appendChild(cmDiv);
+      cmDiv.outerHTML; // just to force parse
+      const tmp = document.createElement('template');
+      tmp.innerHTML = renderComment(nuevoComentario, id, cid);
+      const newNode = tmp.content.firstElementChild;
+      csec.appendChild(newNode);
       // Update comment count
       const cmtBtn = card?.querySelector('.pacts .comment-btn');
       if (cmtBtn) cmtBtn.innerHTML = `<i class="fi fi-rr-comment"></i> ${p.cmts.length}`;
@@ -2043,6 +2145,7 @@ function rpostExplore(p, badge) {
       <button class="abtn comment-btn" onclick="tcmt('${p.id}')"><i class="fi fi-rr-comment"></i> ${cmts.length}</button>
       <button class="abtn save-btn${isSaved?' sav':''}" onclick="tsave('${p.id}')"><i class="${isSaved?'fi fi-sr-bookmark':'fi fi-rr-bookmark'}"></i> ${isSaved?'guardado':'guardar'}</button>
       <button class="abtn copy-btn" onclick="copyPost('${p.id}')" title="copiar texto"><i class="fi fi-rr-copy"></i> copiar</button>
+      <button class="abtn share-btn" onclick="sharePost('${p.id}',event)" title="compartir"><i class="fi fi-rr-share"></i> compartir</button>
     </div>
   </div>`;
 }
@@ -2177,6 +2280,8 @@ window.gosettings=gosettings; window.selectTheme=selectTheme; window.rsettings=r
 window.goExplore=goExplore; window.closeExplore=closeExplore; window.fetchExplorePosts=fetchExplorePosts;
 window.pinPost=pinPost; window.tlikeCmt=tlikeCmt; window.renderProfilePosts=renderProfilePosts;
 window.fetchProfilePosts=fetchProfilePosts;
+window.sharePost=sharePost; window.copyPostLink=copyPostLink; window.nativeShare=nativeShare;
+window.startReply=startReply; window.cancelReply=cancelReply; window.renderComment=renderComment;
 
 showLoading();
 // Usar refreshSession en lugar de getSession para garantizar token válido y metadatos frescos
