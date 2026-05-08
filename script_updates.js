@@ -1,17 +1,9 @@
-// ================================================================
-// SIGILO — script_updates.js
-// Panel de "Actualizaciones" — edita UPDATES para agregar cambios
-// ================================================================
 
-// ----------------------------------------------------------------
-// ✏️  EDITA AQUÍ para agregar nuevas actualizaciones
-//    Agrega al inicio del array (más reciente primero)
-// ----------------------------------------------------------------
 const UPDATES = [
   {
     version: '1.3',
-    date: '2025-05',
-    label: 'mayo 2025',
+    date: '2026-05',
+    label: 'mayo 2026',
     items: [
       { icon: '✦', text: 'Panel de actualizaciones — ahora puedes ver los cambios recientes de sigilo.' },
       { icon: '✦', text: 'Seguidores mejorados — en la lista de seguidores/siguiendo ahora se muestra quién te sigue de vuelta, con botón para seguirles directamente.' },
@@ -19,8 +11,8 @@ const UPDATES = [
   },
   {
     version: '1.2',
-    date: '2025-04',
-    label: 'abril 2025',
+    date: '2026-05',
+    label: 'mayo 2026',
     items: [
       { icon: '✦', text: 'Sistema de seguir/dejar de seguir con notificaciones en tiempo real.' },
       { icon: '✦', text: 'Feed "Siguiendo" — tab exclusiva con publicaciones de las cuentas que sigues.' },
@@ -29,28 +21,6 @@ const UPDATES = [
     ]
   },
   {
-    version: '1.1',
-    date: '2025-03',
-    label: 'marzo 2025',
-    items: [
-      { icon: '✦', text: 'Explorar — descubre los posts más destacados de la comunidad.' },
-      { icon: '✦', text: 'Carpetas — organiza tus posts guardados en colecciones.' },
-      { icon: '✦', text: 'Temas de color — elige entre 8 paletas para personalizar tu experiencia.' },
-      { icon: '✦', text: 'Chat global — habla con la comunidad en tiempo real.' },
-    ]
-  },
-  {
-    version: '1.0',
-    date: '2025-02',
-    label: 'febrero 2025',
-    items: [
-      { icon: '✦', text: 'Lanzamiento de sigilo — bienvenida a la comunidad de arte en texto.' },
-      { icon: '✦', text: 'Publicaciones con categorías: decoraciones, letras, símbolos, biografías y más.' },
-      { icon: '✦', text: 'Likes, comentarios y guardados en cada publicación.' },
-      { icon: '✦', text: 'Perfiles de usuario con avatar y bio.' },
-    ]
-  },
-];
 
 // ----------------------------------------------------------------
 // ESTADO
