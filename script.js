@@ -1172,7 +1172,7 @@ function rpost(p) {
       <button class="abtn comment-btn${copen?' active':''}" onclick="tcmt('${p.id}')"><i class="${copen?'fi fi-sr-comment':'fi fi-rr-comment'}"></i> ${cmts.length}</button>
       <button class="abtn save-btn${isSaved?' sav':''}" onclick="tsave('${p.id}')"><i class="${isSaved?'fi fi-sr-bookmark':'fi fi-rr-bookmark'}"></i> ${isSaved?'guardado':'guardar'}</button>
       <button class="abtn copy-btn" onclick="copyPost('${p.id}')" title="copiar texto"><i class="fi fi-rr-copy"></i> copiar</button>
-      <button class="abtn share-btn" onclick="sharePost('${p.id}',event)" title="compartir"><i class="fi fi-rr-share"></i> compartir</button>
+      <button class="abtn share-btn" onclick="sharePost('${p.id}',event)" title="compartir"><i class="fi fi-rr-share"></i><span class="share-label"> compartir</span></button>
     </div>
     ${copen?`<div class="csec">
       <div class="crow" id="crow-${cid}">
@@ -2145,7 +2145,7 @@ function rpostExplore(p, badge) {
       <button class="abtn comment-btn" onclick="tcmt('${p.id}')"><i class="fi fi-rr-comment"></i> ${cmts.length}</button>
       <button class="abtn save-btn${isSaved?' sav':''}" onclick="tsave('${p.id}')"><i class="${isSaved?'fi fi-sr-bookmark':'fi fi-rr-bookmark'}"></i> ${isSaved?'guardado':'guardar'}</button>
       <button class="abtn copy-btn" onclick="copyPost('${p.id}')" title="copiar texto"><i class="fi fi-rr-copy"></i> copiar</button>
-      <button class="abtn share-btn" onclick="sharePost('${p.id}',event)" title="compartir"><i class="fi fi-rr-share"></i> compartir</button>
+      <button class="abtn share-btn" onclick="sharePost('${p.id}',event)" title="compartir"><i class="fi fi-rr-share"></i><span class="share-label"> compartir</span></button>
     </div>
   </div>`;
 }
