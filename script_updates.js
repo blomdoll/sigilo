@@ -1,5 +1,14 @@
 const UPDATES = [
   {
+    version: '1.3',
+    date: '2026-05',
+    label: 'mayo 2026',
+    items: [
+      { icon: '✦', text: 'Sección de comunidad — un espacio aparte para iniciar conversaciones, hacer preguntas y discutir temas del sitio.' },
+      { icon: '✦', text: 'Los posts de comunidad son independientes del feed principal y del tab de siguiendo.' },
+    ]
+  },
+  {
     version: '1.2',
     date: '2026-05',
     label: 'mayo 2026',
@@ -30,16 +39,10 @@ const UPDATES = [
   },
 ];
 
-// ----------------------------------------------------------------
-// ESTADO
-// ----------------------------------------------------------------
 S.updatesOpen = false;
 
-// ----------------------------------------------------------------
-// CLAVE LOCAL — para marcar si hay novedades no vistas
-// ----------------------------------------------------------------
 const UPDATES_KEY = 'sigilo_updates_seen';
-const LATEST_VERSION = UPDATES[0]?.version || '1.0';
+const LATEST_VERSION = UPDATES[0]?.version || '1.3';
 
 function _getSeenVersion() {
   try { return localStorage.getItem(UPDATES_KEY) || ''; } catch(e) { return ''; }
@@ -51,9 +54,6 @@ function _hasUnseenUpdates() {
   return _getSeenVersion() !== LATEST_VERSION;
 }
 
-// ----------------------------------------------------------------
-// ABRIR — siempre funciona, sin depender de patches de boot/render
-// ----------------------------------------------------------------
 function openUpdates() {
   S.updatesOpen = true;
   _markSeen();
@@ -67,9 +67,6 @@ function closeUpdates() {
   if (el) el.innerHTML = '';
 }
 
-// ----------------------------------------------------------------
-// RENDER DEL PANEL
-// ----------------------------------------------------------------
 function _renderUpdatesPanel() {
   let el = document.getElementById('updatesPanel');
   if (!el) {
@@ -112,11 +109,6 @@ function _renderUpdatesPanel() {
   `;
 }
 
-// ----------------------------------------------------------------
-// BOTÓN ESCRITORIO
-// Se inyecta una sola vez en el body (fixed por CSS).
-// NO depende de render() — sobrevive a cualquier re-render de #mc.
-// ----------------------------------------------------------------
 function _ensureDesktopBtn() {
   if (window.innerWidth <= 640) return;
   // Verificar que realmente sigue en el DOM (no solo en memoria)
@@ -136,9 +128,6 @@ function _ensureDesktopBtn() {
   document.body.appendChild(btn);
 }
 
-// ----------------------------------------------------------------
-// SINCRONIZAR BADGES — punto rojo en escritorio Y móvil
-// ----------------------------------------------------------------
 function _syncAllBadges() {
   const hasNew = _hasUnseenUpdates();
 
@@ -156,9 +145,6 @@ function _syncAllBadges() {
   }
 }
 
-// ----------------------------------------------------------------
-// INICIALIZACIÓN — segura, no depende de boot() ni render()
-// ----------------------------------------------------------------
 function _updatesInit() {
   _ensureDesktopBtn();
   _syncAllBadges();
@@ -176,8 +162,6 @@ if (document.readyState === 'loading') {
   _updatesInit();
 }
 
-// Patch de render(): re-verificar botón y badges después de cada render
-// Espera con retry hasta que render esté definida
 (function() {
   function _patchRender() {
     if (typeof render !== 'function') { setTimeout(_patchRender, 100); return; }
@@ -193,8 +177,5 @@ if (document.readyState === 'loading') {
   _patchRender();
 })();
 
-// ----------------------------------------------------------------
-// EXPOSE GLOBAL — disponible inmediatamente para onclick en HTML
-// ----------------------------------------------------------------
 window.openUpdates  = openUpdates;
 window.closeUpdates = closeUpdates;
