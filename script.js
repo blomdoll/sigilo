@@ -1186,22 +1186,37 @@ function render() {
 
 function attachTextareaResize() {
   const ta = document.getElementById('ct');
-  if (!ta || ta._resizeAttached) return;
-  ta._resizeAttached = true;
-  // Expand on focus (especially helpful on mobile)
-  ta.addEventListener('focus', () => {
-    if (ta.offsetHeight < 100) { ta.style.minHeight = '110px'; }
-  });
-  ta.addEventListener('input', () => {
-    ta.style.height = 'auto';
-    ta.style.height = ta.scrollHeight + 'px';
-    const cnt = document.getElementById('char-count');
-    if (cnt) {
-      const rem = MAX_CHARS - ta.value.length;
-      cnt.textContent = rem;
-      cnt.className = 'char-count' + (rem < 50 ? ' warn' : '') + (rem < 0 ? ' over' : '');
-    }
-  });
+  if (ta && !ta._resizeAttached) {
+    ta._resizeAttached = true;
+    ta.addEventListener('focus', () => {
+      if (ta.offsetHeight < 100) { ta.style.minHeight = '110px'; }
+    });
+    ta.addEventListener('input', () => {
+      ta.style.height = 'auto';
+      ta.style.height = ta.scrollHeight + 'px';
+      const cnt = document.getElementById('char-count');
+      if (cnt) {
+        const rem = MAX_CHARS - ta.value.length;
+        cnt.textContent = rem;
+        cnt.className = 'char-count' + (rem < 50 ? ' warn' : '') + (rem < 0 ? ' over' : '');
+      }
+    });
+  }
+  // Wire up community textarea (inline tab)
+  const tac = document.getElementById('ct-comm');
+  if (tac && !tac._resizeAttached) {
+    tac._resizeAttached = true;
+    tac.addEventListener('input', () => {
+      tac.style.height = 'auto';
+      tac.style.height = tac.scrollHeight + 'px';
+      const cnt = document.getElementById('cc-comm');
+      if (cnt) {
+        const rem = MAX_CHARS - tac.value.length;
+        cnt.textContent = rem;
+        cnt.className = 'char-count' + (rem < 50 ? ' warn' : '') + (rem < 0 ? ' over' : '');
+      }
+    });
+  }
 }
 
 // --- MODALES ---
@@ -1312,13 +1327,13 @@ async function saveEditPost(id) {
 // --- FEED ---
 function rCommunitySection() {
   const postsHtml = S.communityPosts.length === 0
-    ? '<div class="empty"><div class="ei">💬</div><div class="el">aún no hay publicaciones en comunidad — ¡sé el primero!</div></div>'
+    ? '<div class="empty"><div class="ei">\ud83d\udcac</div><div class="el">a\u00fan no hay publicaciones en comunidad \u2014 \u00a1s\u00e9 el primero!</div></div>'
     : S.communityPosts.map(rpost).join('');
   return '<div class="community-tab-inline">' +
-    '<div class="compose">' +
-      '<div class="compose-head">' + avEl(S.me) + '<textarea id="ct-comm" class="ct" placeholder="inicia una conversación, haz una búsqueda..." maxlength="' + MAX_CHARS + '" oninput="this.style.height=\'\';this.style.height=this.scrollHeight+\'px\'"></textarea></div>' +
-      '<div class="compose-foot">' +
-        '<span class="char-count" id="cc-comm">0/' + MAX_CHARS + '</span>' +
+    '<div class="ccard">' +
+      '<div class="ctop">' + avEl(S.me) + '<textarea id="ct-comm" class="ctxt" placeholder="inicia una conversaci\u00f3n, haz una b\u00fasqueda..." maxlength="' + MAX_CHARS + '"></textarea></div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;padding:.2rem 0 0">' +
+        '<span class="char-count" id="cc-comm">' + MAX_CHARS + '</span>' +
         '<button class="pbtn" onclick="postCommunity()">publicar</button>' +
       '</div>' +
     '</div>' +
