@@ -446,7 +446,13 @@ function rfeedWithTabs() {
   <div class="ftitle">inicio</div>
   <div class="fsub">comparte decoraciones, letras, símbolos y más</div>`;
 
-  const tabs = `
+  const feedTabs = `
+  <div class="feed-tabs">
+    <button class="feed-tab${activeTab!=='siguiendo'&&activeTab!=='explorar'?' on':''}" onclick="setFeedTab('todos')">\u2756 todos</button>
+    <button class="feed-tab${activeTab==='siguiendo'?' on':''}" onclick="setFeedTab('siguiendo')">siguiendo</button>
+  </div>`;
+
+  const exploreBanner = `
   <div class="explore-banner" onclick="goExplore()">
     <div class="explore-banner-icon"><i class="fi fi-rr-star"></i></div>
     <div class="explore-banner-text">
@@ -454,19 +460,10 @@ function rfeedWithTabs() {
       <div class="explore-banner-sub">publicaciones populares de las últimas 48 horas</div>
     </div>
     <div class="explore-banner-arrow"><i class="fi fi-rr-angle-right"></i></div>
-  </div>
-  <div class="feed-tabs">
-    <button class="feed-tab${activeTab!=='siguiendo'&&activeTab!=='explorar'&&activeTab!=='comunidad'?' on':''}" onclick="setFeedTab('todos')">\u2756 todos</button>
-    <button class="feed-tab${activeTab==='comunidad'?' on':''}" onclick="setFeedTab('comunidad')">comunidad</button>
-    <button class="feed-tab${activeTab==='siguiendo'?' on':''}" onclick="setFeedTab('siguiendo')">siguiendo</button>
   </div>`;
 
   if (activeTab === 'siguiendo') {
-    return header + composeCard + tabs + renderFollowingSection();
-  }
-
-  if (activeTab === 'comunidad') {
-    return header + composeCard + tabs + rCommunitySection();
+    return header + feedTabs + composeCard + exploreBanner + renderFollowingSection();
   }
 
   // Tab "todos" (default)
@@ -478,7 +475,7 @@ function rfeedWithTabs() {
       : posts.map(rpost).join('') + `<div id="scroll-sentinel" style="height:1px;margin:1rem 0"></div>`
     }`;
 
-  return header + composeCard + tabs + catsAndPosts;
+  return header + feedTabs + composeCard + exploreBanner + catsAndPosts;
 }
 
 function renderFollowingSection() {
@@ -519,16 +516,6 @@ function setFeedTab(tab) {
 
   if (tab === 'explorar') {
     goExplore();
-    return;
-  }
-
-  if (tab === 'comunidad') {
-    render();
-    if (S.communityPosts.length === 0) {
-      fetchCommunityPosts().then(() => {
-        if (S.feedTab === 'comunidad') render();
-      });
-    }
     return;
   }
 
