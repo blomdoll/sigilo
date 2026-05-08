@@ -40,6 +40,7 @@ const S = {
   communityPosts: [], // posts de comunidad
   communityLoading: false,
   replyTo: {}, // { postId: { cmtId, un } } — comentario al que se responde actualmente
+  savedPosts: [], // posts guardados por el usuario, cargados frescos desde Supabase
 };
 window.S = S; // Expone globalmente para script_chat.js y otros módulos
 
@@ -609,33 +610,32 @@ async function fetchProfilePosts(userId) {
 }
 window.fetchProfilePosts = fetchProfilePosts;
 
-// FIX: cargar desde Supabase todos los posts donde el usuario aparece en el array "saved"
-// Necesario porque S.posts solo contiene posts paginados y los guardados podían no estar en memoria
+// FIX GUARDADOS: carga posts guardados en S.savedPosts (array separado de S.posts)
+// y renderiza DESPUES de recibir los datos de Supabase, no antes.
 async function fetchSavedPosts() {
   if (!S.me) return;
   try {
     const { data, error } = await db
       .from('posts')
       .select('*')
-      .contains('saved', [S.me.id])
+      .filter('saved', 'cs', JSON.stringify([S.me.id]))
       .order('created_at', { ascending: false });
-    if (error || !data) return;
-    // Mezclar en S.posts sin duplicar
-    const existingIds = new Set(S.posts.map(p => p.id));
-    const newPosts = data
-      .map(p => ({
+    if (error) {
+      console.error('fetchSavedPosts error:', error);
+      S.savedPosts = S.posts.filter(p => Array.isArray(p.saved) && p.saved.includes(S.me.id));
+    } else {
+      S.savedPosts = (data || []).map(p => ({
         ...p,
         likes: Array.isArray(p.likes) ? p.likes : [],
         cmts: Array.isArray(p.cmts) ? p.cmts : [],
         saved: Array.isArray(p.saved) ? p.saved : [],
         t: p.created_at
-      }))
-      .filter(p => !existingIds.has(p.id));
-    if (newPosts.length > 0) {
-      S.posts = [...S.posts, ...newPosts];
+      }));
     }
-    if (S.page === 'profile' && S.puid === S.me.id && S.ptab === 'saved') render();
-  } catch(e) {}
+  } catch(e) {
+    S.savedPosts = S.posts.filter(p => Array.isArray(p.saved) && p.saved.includes(S.me.id));
+  }
+  if (S.page === 'profile' && S.puid === S.me.id && S.ptab === 'saved') render();
 }
 window.fetchSavedPosts = fetchSavedPosts;
 
@@ -1637,7 +1637,7 @@ function rprofile() {
 
   const tab = S.ptab;
   const myp = S.posts.filter(p => p.user_id === S.puid);
-  const svd = S.posts.filter(p => Array.isArray(p.saved) && p.saved.includes(S.me.id));
+  const svd = S.savedPosts || [];
   const col = S.posts.filter(p => p.user_id === S.puid && p.col);
   const userFolders = S.folders.filter(f => f.user_id === S.puid);
 
@@ -1771,11 +1771,20 @@ function setComposeCat(c) {
     btn.classList.toggle('on', btn.textContent.trim() === c);
   });
 }
-function stptab(t) { S.ptab=t; S.activeFolderTab=null;
-  // FIX: cargar guardados frescos desde la BD al abrir la tab "saved"
-  // S.posts solo tiene los últimos posts paginados, no todos los guardados
-  if (t === 'saved') fetchSavedPosts();
-  render(); window.scrollTo({top:0,behavior:"smooth"}); }
+function stptab(t) {
+  S.ptab = t; S.activeFolderTab = null;
+  if (t === 'saved') {
+    // Mostrar estado de carga y fetchear desde Supabase.
+    // fetchSavedPosts() llama render() al terminar — no llamar render() aquí
+    // para evitar que se muestre vacío antes de que lleguen los datos.
+    S.savedPosts = []; // limpiar para mostrar "cargando..." si rprofile lo detecta
+    render();
+    fetchSavedPosts();
+  } else {
+    render();
+  }
+  window.scrollTo({top:0,behavior:"smooth"});
+}
 function tmenu(id,e) {
   e.stopPropagation();
   id=isNaN(id)?id:Number(id);
@@ -1923,7 +1932,17 @@ async function tsave(id) {
   }
   toast(p.saved.includes(S.me.id) ? 'guardado' : 'eliminado de guardados');
   const {error}=await db.from('posts').update({saved:p.saved}).eq('id',id);
-  if(error) { toast('Error al guardar'); render(); }
+  if(error) { toast('Error al guardar'); render(); return; }
+  // Sincronizar S.savedPosts en memoria para reflejar el cambio
+  if (!Array.isArray(S.savedPosts)) S.savedPosts = [];
+  const inSaved = S.savedPosts.findIndex(x => x.id === id);
+  if (p.saved.includes(S.me.id)) {
+    // Agregar a savedPosts si no está
+    if (inSaved === -1) S.savedPosts.unshift(p);
+  } else {
+    // Quitar de savedPosts si estaba
+    if (inSaved > -1) S.savedPosts.splice(inSaved, 1);
+  }
 }
 
 async function tocol(id) {
