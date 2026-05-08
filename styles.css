@@ -1673,7 +1673,16 @@ header { position: relative; }
   /* Ocultar el explore-banner en móvil (reemplazado por feed-tabs) */
   .explore-banner { display: none; }
 
-  /* ---- Feed tabs (todos | explorar | siguiendo) en móvil ---- */
+  /* Ocultar tab "comunidad" en las feed-tabs en móvil (accesible desde el mob-nav) */
+  .feed-tab-community { display: none !important; }
+
+  /* comm-dot dentro del mob-nav */
+  #mob-community .comm-dot {
+    top: 4px;
+    right: calc(50% - 15px);
+  }
+
+  /* ---- Feed tabs (todos | siguiendo) en móvil ---- */
   .feed-tabs {
     display: flex;
     background: var(--surface);
