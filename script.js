@@ -416,6 +416,12 @@ async function boot() {
       loadNotifs();
       return;
     }
+    if (saved && saved.page === 'community') {
+      fetchFolders();
+      loadNotifs();
+      goCommunity();
+      return;
+    }
   } catch(e) {}
 
   // ── DEEP LINK: ?post=ID ──────────────────────────────────────────
@@ -920,6 +926,8 @@ window.addEventListener('popstate', (e) => {
     }
   } else if (state.page === 'settings') {
     gosettings();
+  } else if (state.page === 'community') {
+    goCommunity();
   }
 });
 
