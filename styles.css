@@ -779,6 +779,19 @@ header { position: relative; }
   padding:0 3px; pointer-events:none;
 }
 
+/* Badge de nuevos posts en comunidad (nav móvil) */
+.comm-dot {
+  position: absolute;
+  top: 6px; right: calc(50% - 14px);
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--w1);
+  border: 2px solid var(--surface);
+  pointer-events: none;
+  display: none;
+}
+.comm-dot.visible { display: block; }
+
 .notif-panel {
   position:fixed; top:calc(var(--header-h,58px) + 8px); right:1rem;
   width:min(320px,calc(100vw - 2rem));
