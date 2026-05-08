@@ -1,7 +1,6 @@
-
 const UPDATES = [
   {
-    version: '1.3',
+    version: '1.1',
     date: '2026-05',
     label: 'mayo 2026',
     items: [
@@ -10,7 +9,7 @@ const UPDATES = [
     ]
   },
   {
-    version: '1.2',
+    version: '1.0',
     date: '2026-05',
     label: 'mayo 2026',
     items: [
@@ -44,13 +43,13 @@ function _hasUnseenUpdates() {
 }
 
 // ----------------------------------------------------------------
-// ABRIR / CERRAR
+// ABRIR — siempre funciona, sin depender de patches de boot/render
 // ----------------------------------------------------------------
 function openUpdates() {
   S.updatesOpen = true;
   _markSeen();
-  _renderUpdatesBadges(); // quitar badges
-  _renderUpdatesPanel();
+  _renderUpdatesPanel();   // panel primero
+  _syncAllBadges();        // luego quitar badges
 }
 
 function closeUpdates() {
@@ -105,68 +104,88 @@ function _renderUpdatesPanel() {
 }
 
 // ----------------------------------------------------------------
-// BOTÓN ESCRITORIO — inyectado en el área lateral izquierda
-// Se llama desde boot y cuando render() se ejecuta
+// BOTÓN ESCRITORIO
+// Se inyecta una sola vez en el body (fixed por CSS).
+// NO depende de render() — sobrevive a cualquier re-render de #mc.
 // ----------------------------------------------------------------
-function _injectDesktopUpdatesBtn() {
+function _ensureDesktopBtn() {
   if (window.innerWidth <= 640) return;
-  if (document.getElementById('updates-desktop-btn')) return;
+  // Verificar que realmente sigue en el DOM (no solo en memoria)
+  if (document.body.contains(document.getElementById('updates-desktop-btn'))) return;
 
   const btn = document.createElement('button');
   btn.id = 'updates-desktop-btn';
   btn.className = 'upd-desktop-btn';
   btn.title = 'Actualizaciones';
+  btn.setAttribute('aria-label', 'Actualizaciones');
   btn.onclick = openUpdates;
   btn.innerHTML = `
     <span class="upd-desktop-icon">✦</span>
     <span class="upd-desktop-label">actualizaciones</span>
-    <span id="upd-desktop-dot" class="upd-dot" style="display:none"></span>
+    <span class="upd-desktop-dot upd-dot"></span>
   `;
-
-  // Insertar como hijo del body — posicionado fixed via CSS
   document.body.appendChild(btn);
-  _renderUpdatesBadges();
 }
 
 // ----------------------------------------------------------------
-// BADGES (punto rojo en botón y en header móvil)
+// SINCRONIZAR BADGES — punto rojo en escritorio Y móvil
 // ----------------------------------------------------------------
-function _renderUpdatesBadges() {
+function _syncAllBadges() {
   const hasNew = _hasUnseenUpdates();
 
-  // Badge escritorio
-  const desktopDot = document.getElementById('upd-desktop-dot');
-  if (desktopDot) desktopDot.style.display = hasNew ? 'inline-block' : 'none';
+  // Badge escritorio (span con clase dentro del botón)
+  const desktopDot = document.querySelector('#updates-desktop-btn .upd-desktop-dot');
+  if (desktopDot) {
+    desktopDot.style.display = hasNew ? 'block' : 'none';
+  }
 
-  // Badge móvil (en el botón del header)
+  // Badge móvil (span con id en el header HTML)
   const mobDot = document.getElementById('upd-mob-dot');
-  if (mobDot) mobDot.style.display = hasNew ? 'inline-block' : 'none';
+  if (mobDot) {
+    // Forzar display aunque el padre tenga overflow hidden o display:none
+    mobDot.style.setProperty('display', hasNew ? 'block' : 'none', 'important');
+  }
 }
 
 // ----------------------------------------------------------------
-// BOOT
+// INICIALIZACIÓN — segura, no depende de boot() ni render()
 // ----------------------------------------------------------------
-const _origBootForUpdates = boot;
-window.boot = function() {
-  _origBootForUpdates();
-  setTimeout(() => {
-    _injectDesktopUpdatesBtn();
-    _renderUpdatesBadges();
-  }, 200);
-};
+function _updatesInit() {
+  _ensureDesktopBtn();
+  _syncAllBadges();
 
-// También re-intentar al hacer render (por si el DOM se reconstruye)
-const _origRenderForUpdates = render;
-window.render = function() {
-  _origRenderForUpdates();
-  setTimeout(() => {
-    _injectDesktopUpdatesBtn();
-    _renderUpdatesBadges();
-  }, 100);
-};
+  window.addEventListener('resize', () => {
+    _ensureDesktopBtn();
+    _syncAllBadges();
+  });
+}
+
+// Ejecutar tan pronto como el DOM esté disponible
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _updatesInit);
+} else {
+  _updatesInit();
+}
+
+// Patch de render(): re-verificar botón y badges después de cada render
+// Espera con retry hasta que render esté definida
+(function() {
+  function _patchRender() {
+    if (typeof render !== 'function') { setTimeout(_patchRender, 100); return; }
+    const _orig = render;
+    window.render = function() {
+      _orig.apply(this, arguments);
+      setTimeout(() => {
+        _ensureDesktopBtn();
+        _syncAllBadges();
+      }, 80);
+    };
+  }
+  _patchRender();
+})();
 
 // ----------------------------------------------------------------
-// EXPOSE
+// EXPOSE GLOBAL — disponible inmediatamente para onclick en HTML
 // ----------------------------------------------------------------
 window.openUpdates  = openUpdates;
 window.closeUpdates = closeUpdates;
