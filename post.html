@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>publicación · sigilo</title>
+
+  <!-- PWA / favicon -->
+  <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96"/>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+  <link rel="shortcut icon" href="/favicon.ico"/>
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"/>
+  <link rel="manifest" href="/site.webmanifest"/>
+
+  <!-- Favicon dinámico (misma lógica que index.html) -->
+  <link id="favicon" rel="icon" type="image/svg+xml" href="">
+  <script>
+    (function(){
+      var TC={durazno:'#C9785A',medianoche:'#8B7CF8',bosque:'#5A8A5C',cielo:'#4A86C8',rosa:'#C45C80',ambar:'#C8880A',pizarra:'#5A6E8A',nocturno:'#D4956A'};
+      function accent(){try{var s=localStorage.getItem('sigilo_theme');if(s&&TC[s])return TC[s];}catch(e){}return(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'#8B7CF8':'#C9785A';}
+      function makeFav(c){var s='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><path d="M16 3L17.4 13.2L27 16L17.4 18.8L16 29L14.6 18.8L5 16L14.6 13.2Z" fill="'+c+'"/><path d="M25 4L25.8 8.5L30 9.5L25.8 10.5L25 15L24.2 10.5L20 9.5L24.2 8.5Z" fill="'+c+'" opacity=".7"/><path d="M8 19L8.6 22.4L12 23.2L8.6 24L8 27.4L7.4 24L4 23.2L7.4 22.4Z" fill="'+c+'" opacity=".55"/></svg>';return'data:image/svg+xml,'+encodeURIComponent(s);}
+      var el=document.getElementById('favicon');if(el)el.href=makeFav(accent());
+    })();
+  </script>
+
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=DM+Sans:wght@300;400;500&family=Noto+Sans+Symbols&family=Noto+Sans+Symbols+2&display=swap" rel="stylesheet"/>
+
+  <!-- Open Graph (para previsualización al compartir en redes) -->
+  <meta property="og:site_name" content="sigilo">
+  <meta property="og:type" content="article">
+  <meta id="og-title" property="og:title" content="publicación en sigilo">
+  <meta id="og-desc" property="og:description" content="">
+  <meta property="og:url" content="">
+
+  <style>
+    /* ── Variables de tema ── */
+    *{box-sizing:border-box;margin:0;padding:0;}
+    html,body{height:100%;}
+    :root{
+      --bg:#FBF6F0;--surface:#FFF9F4;--s2:#F5EDE3;
+      --w1:#C9785A;--w2:#8B4A2A;--w3:#E8C5A8;--w4:#F2DBC8;
+      --tx:#2C1810;--tx2:#7A5540;--tx3:#A07050;
+      --bd:#E8D5C0;--r:14px;--r2:10px;
+      --fd:'Playfair Display',serif;--fb:'DM Sans',sans-serif;
+    }
+    [data-theme="durazno"]{--bg:#FBF6F0;--surface:#FFF9F4;--s2:#F5EDE3;--w1:#C9785A;--w2:#8B4A2A;--w3:#E8C5A8;--w4:#F2DBC8;--tx:#2C1810;--tx2:#7A5540;--tx3:#A07050;--bd:#E8D5C0;}
+    [data-theme="medianoche"]{--bg:#0F0F14;--surface:#16161E;--s2:#1E1E2A;--w1:#8B7CF8;--w2:#B4A8FF;--w3:#2D2B4E;--w4:#201E38;--tx:#E8E6FF;--tx2:#A09CC0;--tx3:#6B6880;--bd:#2A2840;}
+    [data-theme="bosque"]{--bg:#F2F5EE;--surface:#F8FAF5;--s2:#E8EEE0;--w1:#5A8A5C;--w2:#2F5C32;--w3:#B8D4B9;--w4:#D8EDD8;--tx:#1A2E1B;--tx2:#456647;--tx3:#7A9E7C;--bd:#C8DEC9;}
+    [data-theme="cielo"]{--bg:#F0F5FB;--surface:#F8FAFE;--s2:#E3EDF8;--w1:#4A86C8;--w2:#1D5A9E;--w3:#A8C8EE;--w4:#D0E4F5;--tx:#0E2040;--tx2:#2C5080;--tx3:#6080A8;--bd:#C0D8EE;}
+    [data-theme="rosa"]{--bg:#FDF0F5;--surface:#FFF5F8;--s2:#FAE0EC;--w1:#C45C80;--w2:#8A2848;--w3:#F0B8CC;--w4:#FAD8E8;--tx:#3A0E22;--tx2:#7A3050;--tx3:#A86080;--bd:#ECC0D4;}
+    [data-theme="ambar"]{--bg:#FBF5E8;--surface:#FFFBF0;--s2:#F5EAD0;--w1:#C8880A;--w2:#8A5A00;--w3:#EED09A;--w4:#F8E8BE;--tx:#2C1C00;--tx2:#7A5010;--tx3:#A07820;--bd:#E8D098;}
+    [data-theme="pizarra"]{--bg:#F2F3F5;--surface:#FAFBFC;--s2:#E8EAEE;--w1:#5A6E8A;--w2:#2E4260;--w3:#B0BED0;--w4:#D8E0EC;--tx:#0A1828;--tx2:#3A5070;--tx3:#6A80A0;--bd:#C8D4E4;}
+    [data-theme="nocturno"]{--bg:#130E0A;--surface:#1C1410;--s2:#261C16;--w1:#D4956A;--w2:#F0B88A;--w3:#3A2618;--w4:#2A1C12;--tx:#F0E8DE;--tx2:#C0A080;--tx3:#806040;--bd:#3A2A1E;}
+
+    body{background:var(--bg);color:var(--tx);font-family:var(--fb);font-size:15px;line-height:1.5;}
+
+    /* ── Header ── */
+    .sp-header{
+      background:var(--surface);border-bottom:1px solid var(--bd);
+      padding:.75rem 1.25rem;display:flex;align-items:center;
+      justify-content:space-between;position:sticky;top:0;z-index:50;
+    }
+    .sp-logo{
+      font-family:var(--fd);font-size:1.35rem;color:var(--w1);
+      text-decoration:none;cursor:pointer;
+    }
+    .sp-back{
+      all:unset;box-sizing:border-box;cursor:pointer;
+      display:inline-flex;align-items:center;gap:.4rem;
+      padding:.42rem .9rem;border-radius:var(--r2);
+      border:1px solid var(--bd);background:var(--surface);
+      color:var(--tx3);font-size:.8rem;font-family:var(--fb);
+      transition:background .15s,color .15s,border-color .15s;
+    }
+    .sp-back:hover{background:var(--s2);color:var(--tx2);border-color:var(--tx3);}
+    .sp-back svg{flex-shrink:0;}
+
+    /* ── Contenido ── */
+    .sp-main{
+      max-width:660px;margin:0 auto;width:100%;
+      padding:2rem 1.25rem 3rem;
+    }
+
+    /* ── Chip "ver en sigilo" arriba de la card ── */
+    .sp-context{
+      font-size:.75rem;color:var(--tx3);margin-bottom:.8rem;
+      display:flex;align-items:center;gap:.4rem;
+    }
+    .sp-context a{color:var(--w1);text-decoration:none;font-weight:500;}
+    .sp-context a:hover{text-decoration:underline;}
+
+    /* ── Post card ── */
+    .sp-card{
+      background:var(--surface);border:1px solid var(--bd);
+      border-radius:var(--r);padding:1.4rem;
+    }
+    .sp-head{display:flex;align-items:center;gap:.7rem;margin-bottom:.9rem;}
+    .sp-av{
+      width:42px;height:42px;border-radius:50%;
+      background:var(--w3);color:var(--w2);font-size:.9rem;font-weight:500;
+      display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;
+    }
+    .sp-av img{width:100%;height:100%;object-fit:cover;}
+    .sp-uname{font-weight:500;font-size:.9rem;color:var(--tx);}
+    .sp-time{font-size:.7rem;color:var(--tx3);margin-top:.08rem;}
+    .sp-badge{
+      font-size:.68rem;padding:.18rem .6rem;border-radius:10px;
+      background:var(--w4);color:var(--w2);margin-left:auto;flex-shrink:0;
+    }
+    .sp-body{
+      font-family:'Playfair Display',system-ui,-apple-system,'Noto Sans Symbols 2','Noto Sans Symbols','Noto Sans','Segoe UI Symbol','Apple Symbols',sans-serif;
+      font-size:1.05rem;line-height:1.8;color:var(--tx);
+      white-space:pre-wrap;word-break:break-word;unicode-bidi:plaintext;
+      margin-bottom:1.1rem;
+    }
+    .sp-divider{border:none;border-top:1px solid var(--bd);margin-bottom:1rem;}
+
+    /* ── Acciones ── */
+    .sp-actions{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;}
+    .sp-btn{
+      all:unset;box-sizing:border-box;cursor:pointer;
+      display:inline-flex;align-items:center;gap:.35rem;
+      padding:.4rem .75rem;border-radius:var(--r2);
+      background:transparent;color:var(--tx3);font-size:.8rem;font-family:var(--fb);
+      transition:background .15s,color .15s;
+    }
+    .sp-btn:hover{background:var(--w4);color:var(--w2);}
+    .sp-btn svg{flex-shrink:0;}
+    .sp-btn-primary{
+      all:unset;box-sizing:border-box;cursor:pointer;
+      display:inline-flex;align-items:center;gap:.4rem;
+      padding:.46rem 1.1rem;border-radius:var(--r2);
+      background:var(--w1);color:#fff;font-size:.82rem;font-weight:500;font-family:var(--fb);
+      transition:background .15s;margin-left:auto;
+    }
+    .sp-btn-primary:hover{background:var(--w2);}
+    .sp-btn-primary svg{flex-shrink:0;}
+
+    /* ── Like counter display ── */
+    .sp-stats{
+      font-size:.78rem;color:var(--tx3);
+      display:flex;gap:1rem;margin-bottom:.9rem;
+    }
+    .sp-stats span{display:flex;align-items:center;gap:.3rem;}
+
+    /* ── Estados de carga / error ── */
+    .sp-state{
+      display:flex;flex-direction:column;align-items:center;
+      justify-content:center;padding:4rem 1rem;text-align:center;gap:.6rem;
+    }
+    .sp-state-icon{font-size:2rem;}
+    .sp-state-title{font-family:var(--fd);font-size:1.25rem;color:var(--tx);}
+    .sp-state-sub{font-size:.82rem;color:var(--tx3);max-width:300px;line-height:1.5;}
+
+    /* Skeleton */
+    @keyframes sk-shine{0%{opacity:.45}50%{opacity:.9}100%{opacity:.45}}
+    .sk{border-radius:8px;background:var(--w4);animation:sk-shine 1.4s ease infinite;}
+    .sk-av{width:42px;height:42px;border-radius:50%;flex-shrink:0;}
+    .sk-line{height:13px;margin-bottom:.5rem;}
+    .sk-full{width:100%;}
+    .sk-med{width:65%;}
+    .sk-short{width:38%;}
+    .sk-big{height:18px;width:80%;margin-bottom:.7rem;}
+
+    /* ── Toast ── */
+    .toast{
+      position:fixed;bottom:1.8rem;left:50%;transform:translateX(-50%);
+      background:var(--tx);color:#fff;padding:.55rem 1.2rem;
+      border-radius:20px;font-size:.8rem;z-index:200;
+      opacity:0;transition:.28s;pointer-events:none;white-space:nowrap;
+    }
+    .toast.show{opacity:1;}
+
+    /* ── Footer ── */
+    .sp-footer{
+      background:var(--surface);border-top:1px solid var(--bd);
+      padding:.9rem;text-align:center;font-size:.73rem;
+      color:var(--tx3);font-style:italic;
+    }
+    .sp-footer b{color:var(--w2);font-weight:500;}
+    .sp-footer a{color:var(--tx3);text-decoration:none;font-size:.78rem;}
+    .sp-footer a:hover{color:var(--w1);}
+
+    /* Mobile */
+    @media(max-width:520px){
+      .sp-main{padding:1.25rem .9rem 3rem;}
+      .sp-card{padding:1.1rem;}
+      .sp-btn-primary span{display:none;}
+    }
+  </style>
+</head>
+<body>
+
+  <header class="sp-header">
+    <a class="sp-logo" href="/">✦ sigilo</a>
+    <button class="sp-back" onclick="history.length>1?history.back():location.href='/'">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      volver
+    </button>
+  </header>
+
+  <main class="sp-main" id="main">
+    <!-- Skeleton mientras carga -->
+    <div id="skeleton">
+      <div style="display:flex;align-items:center;gap:.7rem;margin-bottom:.9rem;">
+        <div class="sk sk-av"></div>
+        <div style="flex:1">
+          <div class="sk sk-line sk-short" style="margin-bottom:.35rem"></div>
+          <div class="sk sk-line sk-med" style="height:10px;width:28%"></div>
+        </div>
+      </div>
+      <div class="sk sk-line sk-big"></div>
+      <div class="sk sk-line sk-full"></div>
+      <div class="sk sk-line sk-full"></div>
+      <div class="sk sk-line sk-med" style="margin-bottom:1.2rem"></div>
+      <div class="sk sk-line sk-short" style="height:10px"></div>
+    </div>
+
+    <!-- El post se inyecta aquí -->
+    <div id="post-container" style="display:none"></div>
+  </main>
+
+  <footer class="sp-footer">
+    Creado por <b>Sage Aksnes / @blomdoll</b> &nbsp;·&nbsp;
+    <a href="/legal.html">privacidad &amp; términos</a>
+  </footer>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    // ── Tema guardado ─────────────────────────────────────────────
+    (function(){
+      try{
+        var t=localStorage.getItem('sigilo_theme');
+        var valid=['durazno','medianoche','bosque','cielo','rosa','ambar','pizarra','nocturno'];
+        if(t&&valid.includes(t)) document.documentElement.setAttribute('data-theme',t);
+        else document.documentElement.setAttribute('data-theme','durazno');
+      }catch(e){document.documentElement.setAttribute('data-theme','durazno');}
+    })();
+
+    // ── Supabase (solo lectura pública — clave anon) ──────────────
+    const SUPA_URL = 'https://mgzbmpcirzeaqfzrpiro.supabase.co';
+    const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1nemJtcGNpcnplYXFmenJwaXJvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1NzQzNTgsImV4cCI6MjA5MzE1MDM1OH0.igJ1MqmbOSGCICdzWSqcl58zP7OTMQr3zF_g6t0F_1I';
+    const db = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+
+    // ── Helpers ───────────────────────────────────────────────────
+    const esc = s => s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
+
+    function toast(msg, dur=2200){
+      const t = document.getElementById('toast');
+      if(!t) return;
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(()=>t.classList.remove('show'), dur);
+    }
+
+    function ago(ts){
+      if(!ts) return '';
+      const norm = (typeof ts==='string'&&!ts.endsWith('Z')&&!ts.includes('+'))?ts+'Z':ts;
+      const d = Date.now()-new Date(norm).getTime();
+      if(isNaN(d)||d<0) return 'ahora';
+      if(d<60000) return 'ahora';
+      if(d<3600000) return ~~(d/60000)+'m';
+      if(d<86400000) return ~~(d/3600000)+'h';
+      if(d<2592000000) return ~~(d/86400000)+'d';
+      return new Date(norm).toLocaleDateString('es',{day:'numeric',month:'short',year:'numeric'});
+    }
+
+    // Avatar: imagen o iniciales
+    function avEl(name, avatarUrl){
+      const ini = (name||'?')[0].toUpperCase();
+      if(avatarUrl){
+        return `<div class="sp-av"><img src="${esc(avatarUrl)}" alt="${esc(ini)}" onerror="this.parentElement.innerHTML='<span>${esc(ini)}</span>'"/></div>`;
+      }
+      return `<div class="sp-av"><span>${esc(ini)}</span></div>`;
+    }
+
+    // ── Obtener ID del post desde la URL ─────────────────────────
+    function getPostId(){
+      // Soporta tanto post.html?id=116  como  post.html?post=116
+      const p = new URLSearchParams(location.search);
+      return p.get('id') || p.get('post') || null;
+    }
+
+    // ── Renderizar el post ────────────────────────────────────────
+    function renderPost(p, profile){
+      const likes = Array.isArray(p.likes)?p.likes:[];
+      const cmts  = Array.isArray(p.cmts)?p.cmts:[];
+
+      const name = profile?.display_name || profile?.username || p.username || 'Usuario';
+      const av   = profile?.avatar_url || p.author_av || null;
+      const postUrl = location.href;
+
+      // Actualizar título de la página y OG
+      const preview = (p.body||'').slice(0,80)+(p.body?.length>80?'…':'');
+      document.title = `${name} en sigilo · "${preview}"`;
+      document.getElementById('og-title').content = `${name} en sigilo`;
+      document.getElementById('og-desc').content = preview;
+
+      return `
+        <div class="sp-context">
+          <span>publicación en</span>
+          <a href="/">✦ sigilo</a>
+        </div>
+
+        <div class="sp-card">
+          <div class="sp-head">
+            ${avEl(name, av)}
+            <div>
+              <div class="sp-uname">${esc(name)}</div>
+              <div class="sp-time">${ago(p.created_at)}</div>
+            </div>
+            <span class="sp-badge">${esc(p.category||'')}</span>
+          </div>
+
+          <div class="sp-body">${esc(p.body||'')}</div>
+
+          <div class="sp-stats">
+            <span>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+              ${likes.length} ${likes.length===1?'like':'likes'}
+            </span>
+            <span>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              ${cmts.length} ${cmts.length===1?'comentario':'comentarios'}
+            </span>
+          </div>
+
+          <hr class="sp-divider"/>
+
+          <div class="sp-actions">
+            <!-- Copiar texto -->
+            <button class="sp-btn" id="copy-btn" onclick="copyText()" title="Copiar texto del post">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              copiar texto
+            </button>
+
+            <!-- Copiar enlace -->
+            <button class="sp-btn" onclick="copyLink()" title="Copiar enlace">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              copiar enlace
+            </button>
+
+            <!-- Compartir nativo (solo si el navegador lo soporta) -->
+            ${navigator.share?`
+            <button class="sp-btn" onclick="nativeShare()" title="Compartir">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+              compartir
+            </button>`:''}
+
+            <!-- Ver en sigilo -->
+            <a href="/" class="sp-btn-primary" title="Abrir sigilo">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              <span>ver en sigilo</span>
+            </a>
+          </div>
+        </div>`;
+    }
+
+    // ── Estado de error ───────────────────────────────────────────
+    function renderError(title, sub){
+      return `<div class="sp-state">
+        <div class="sp-state-icon">✦</div>
+        <div class="sp-state-title">${title}</div>
+        <div class="sp-state-sub">${sub}</div>
+        <br>
+        <a href="/" style="color:var(--w1);font-size:.85rem;text-decoration:none;font-weight:500;">ir a sigilo →</a>
+      </div>`;
+    }
+
+    // ── Cargar el post ────────────────────────────────────────────
+    async function loadPost(){
+      const rawId = getPostId();
+      if(!rawId){
+        showContent(renderError('enlace inválido','Este enlace no contiene un ID de publicación válido.'));
+        return;
+      }
+
+      // Normalizar id (puede ser numérico)
+      const postId = isNaN(rawId) ? rawId : Number(rawId);
+
+      try {
+        const { data: post, error } = await db
+          .from('posts')
+          .select('*')
+          .eq('id', postId)
+          .single();
+
+        if(error || !post){
+          showContent(renderError('publicación no encontrada','Es posible que haya sido eliminada o el enlace sea incorrecto.'));
+          return;
+        }
+
+        // Intentar obtener perfil del autor para tener avatar actualizado
+        let profile = null;
+        try {
+          const { data: prof } = await db
+            .from('profiles')
+            .select('id,username,display_name,avatar_url,avatar_path')
+            .eq('id', post.user_id)
+            .single();
+
+          if(prof){
+            let av = prof.avatar_url;
+            // Si tiene avatar_path, intentar URL firmada
+            if(prof.avatar_path){
+              try{
+                const {data:signed}=await db.storage.from('avatars').createSignedUrl(prof.avatar_path,3600);
+                if(signed?.signedUrl) av=signed.signedUrl;
+              }catch(e){}
+            }
+            profile = { ...prof, avatar_url: av };
+          }
+        } catch(e){}
+
+        // Guardar datos globalmente para las acciones de botones
+        window._POST = post;
+        window._PROFILE = profile;
+
+        showContent(renderPost(post, profile));
+      } catch(e){
+        showContent(renderError('algo salió mal','No se pudo cargar la publicación. Intenta de nuevo más tarde.'));
+      }
+    }
+
+    function showContent(html){
+      document.getElementById('skeleton').style.display = 'none';
+      const c = document.getElementById('post-container');
+      c.innerHTML = html;
+      c.style.display = 'block';
+    }
+
+    // ── Acciones ──────────────────────────────────────────────────
+    function copyText(){
+      const body = window._POST?.body || '';
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(body)
+          .then(()=>{ toast('texto copiado ✦'); feedbackCopyBtn(); })
+          .catch(()=>{ fallbackCopy(body); feedbackCopyBtn(); });
+      } else { fallbackCopy(body); feedbackCopyBtn(); }
+    }
+
+    function feedbackCopyBtn(){
+      const btn = document.getElementById('copy-btn');
+      if(!btn) return;
+      const orig = btn.innerHTML;
+      btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> copiado`;
+      btn.style.color='var(--w1)';
+      setTimeout(()=>{ btn.innerHTML=orig; btn.style.color=''; }, 1600);
+    }
+
+    function copyLink(){
+      const url = location.href;
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(url).then(()=>toast('enlace copiado ✦')).catch(()=>fallbackCopy(url));
+      } else { fallbackCopy(url); }
+    }
+
+    function nativeShare(){
+      const p = window._POST;
+      const profile = window._PROFILE;
+      const name = profile?.display_name || profile?.username || p?.username || 'sigilo';
+      if(navigator.share){
+        navigator.share({
+          title: 'sigilo',
+          text: p ? (p.body||'').slice(0,100) : name+' en sigilo',
+          url: location.href,
+        }).catch(()=>{});
+      }
+    }
+
+    function fallbackCopy(text){
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText='position:fixed;opacity:0;top:0;left:0';
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      try{ document.execCommand('copy'); toast('copiado ✦'); }
+      catch(e){ toast('no se pudo copiar'); }
+      document.body.removeChild(ta);
+    }
+
+    // ── Init ──────────────────────────────────────────────────────
+    loadPost();
+  </script>
+</body>
+</html>
