@@ -415,6 +415,54 @@ async function boot() {
     }
   } catch(e) {}
 
+  // ── DEEP LINK: ?post=ID ──────────────────────────────────────────
+  // Si la URL contiene ?post=<id>, mostrar ese post de forma destacada
+  // en el feed y hacer scroll hasta él automáticamente.
+  const _urlParams = new URLSearchParams(window.location.search);
+  const _deepPostId = _urlParams.get('post');
+  if (_deepPostId) {
+    // Limpiar el parámetro de la URL sin recargar (evita que quede pegado)
+    try { history.replaceState(null, '', window.location.pathname); } catch(e) {}
+    S.page = 'feed'; S.puid = null; S.explorePage = false;
+    loadPinnedPosts();
+    nav();
+    // Mostrar skeletons mientras carga
+    const mc = document.getElementById('mc');
+    if (mc) {
+      const sk = `<div class="skeleton-card"><div class="sk-head"><div class="sk-line sk-avatar"></div><div class="sk-meta"><div class="sk-line short"></div><div class="sk-line tiny"></div></div></div><div class="sk-line full"></div><div class="sk-line med"></div></div>`;
+      mc.innerHTML = `<div class="ftitle">inicio</div><div class="fsub">comparte decoraciones, letras, símbolos y más</div>${sk.repeat(4)}`;
+    }
+    // Cargar el post específico primero, luego el feed completo
+    (async () => {
+      try {
+        const postIdNum = isNaN(_deepPostId) ? _deepPostId : Number(_deepPostId);
+        // Intentar traer el post por su ID directamente
+        const { data: pdata } = await db.from('posts').select('*').eq('id', postIdNum).single();
+        if (pdata) {
+          const linked = { ...pdata, likes: Array.isArray(pdata.likes)?pdata.likes:[], cmts: Array.isArray(pdata.cmts)?pdata.cmts:[], saved: Array.isArray(pdata.saved)?pdata.saved:[], t: pdata.created_at };
+          // Insertar al inicio si no existe aún
+          if (!S.posts.find(x => x.id === linked.id)) S.posts.unshift(linked);
+        }
+      } catch(e) {}
+      await fetchPosts(true);
+      // Una vez renderizado, hacer scroll y resaltar el post
+      setTimeout(() => {
+        const targetId = isNaN(_deepPostId) ? _deepPostId : Number(_deepPostId);
+        const el = document.getElementById('post-' + safeId(targetId));
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.classList.add('highlight');
+          setTimeout(() => el.classList.remove('highlight'), 2200);
+        }
+      }, 350);
+    })();
+    fetchFolders();
+    loadNotifs();
+    startTimestampRefresh();
+    return;
+  }
+  // ────────────────────────────────────────────────────────────────
+
   // Mostrar feed con skeletons mientras carga
   S.page = 'feed';
   S.puid = null; // explícito: en feed no hay perfil activo
