@@ -1,4 +1,4 @@
-S.followTab        = 'todos';
+S.followTab        = S.followTab || 'todos';
 S.followingIds     = new Set();
 S.followersOfMe    = null;  
 S.followingPosts   = [];
@@ -383,6 +383,36 @@ async function fetchFollowingFeed() {
         t: p.created_at,
       }));
       S.followingLoaded = true;
+
+      // Batch-fetch perfiles de autores no cacheados para tener avatares frescos
+      const unknownAuthorIds = [...new Set(
+        S.followingPosts
+          .map(p => p.user_id)
+          .filter(uid => uid !== S.me.id && !S.users.find(u => u.id === uid))
+      )];
+      if (unknownAuthorIds.length > 0) {
+        try {
+          const { data: profilesData } = await db.from('profiles')
+            .select('id,username,display_name,avatar_url,avatar_path,bio')
+            .in('id', unknownAuthorIds);
+          if (profilesData) {
+            await Promise.all(profilesData.map(async d => {
+              let avatarUrl = d.avatar_url;
+              if (d.avatar_path) {
+                const signed = await getSignedAvatarUrl(d.id, d.avatar_path);
+                if (signed) avatarUrl = signed;
+              }
+              const profile = {
+                id: d.id, username: d.display_name || d.username,
+                display_name: d.display_name || d.username,
+                avatar_url: avatarUrl, bio: d.bio || '', _ts: Date.now()
+              };
+              const existing = S.users.findIndex(u => u.id === d.id);
+              if (existing > -1) S.users[existing] = profile; else S.users.push(profile);
+            }));
+          }
+        } catch(e) {}
+      }
     }
   } catch(e) {
     S.followingPosts = [];
@@ -396,13 +426,9 @@ async function fetchFollowingFeed() {
 // ----------------------------------------------------------------
 function rfeedWithTabs() {
   const composeCat = S.composeCat || CATS[1];
-  const tabsHtml = `
-  <div class="ftitle">inicio</div>
-  <div class="fsub">comparte decoraciones, letras, símbolos y más</div>
-  <div class="feed-tabs">
-    <button class="feed-tab${S.followTab==='todos'?' on':''}" onclick="setFeedTab('todos')">\u2756 todos</button>
-    <button class="feed-tab${S.followTab==='siguiendo'?' on':''}" onclick="setFeedTab('siguiendo')">siguiendo</button>
-  </div>
+  const activeTab = S.followTab || S.feedTab || 'todos';
+
+  const composeCard = `
   <div class="ccard">
     <div class="ctop">${avEl(S.me)}<textarea class="ctxt" id="ct" placeholder="comparte algo bonito..." maxlength="${MAX_CHARS}"></textarea></div>
     <div style="display:flex;justify-content:flex-end;padding:.2rem 0 0">
@@ -416,17 +442,43 @@ function rfeedWithTabs() {
     </div>
   </div>`;
 
-  if (S.followTab === 'siguiendo') {
-    return tabsHtml + renderFollowingSection();
-  } else {
-    const posts = S.cat==='todos' ? [...S.posts] : S.posts.filter(p=>p.category===S.cat);
-    return tabsHtml + `
+  const header = `
+  <div class="ftitle">inicio</div>
+  <div class="fsub">comparte decoraciones, letras, símbolos y más</div>`;
+
+  const tabs = `
+  <div class="explore-banner" onclick="goExplore()">
+    <div class="explore-banner-icon"><i class="fi fi-rr-star"></i></div>
+    <div class="explore-banner-text">
+      <div class="explore-banner-title">explorar destacados</div>
+      <div class="explore-banner-sub">publicaciones populares de las últimas 48 horas</div>
+    </div>
+    <div class="explore-banner-arrow"><i class="fi fi-rr-angle-right"></i></div>
+  </div>
+  <div class="feed-tabs">
+    <button class="feed-tab${activeTab!=='siguiendo'&&activeTab!=='explorar'&&activeTab!=='comunidad'?' on':''}" onclick="setFeedTab('todos')">\u2756 todos</button>
+    <button class="feed-tab${activeTab==='comunidad'?' on':''}" onclick="setFeedTab('comunidad')">comunidad</button>
+    <button class="feed-tab${activeTab==='siguiendo'?' on':''}" onclick="setFeedTab('siguiendo')">siguiendo</button>
+  </div>`;
+
+  if (activeTab === 'siguiendo') {
+    return header + composeCard + tabs + renderFollowingSection();
+  }
+
+  if (activeTab === 'comunidad') {
+    return header + composeCard + tabs + rCommunitySection();
+  }
+
+  // Tab "todos" (default)
+  const posts = S.cat==='todos' ? [...S.posts] : S.posts.filter(p=>p.category===S.cat);
+  const catsAndPosts = `
     <div class="cats">${CATS.map(c=>`<button class="catb${S.cat===c?' on':''}" onclick="setcat('${c}')">${c}</button>`).join('')}</div>
     ${posts.length===0
       ? `<div class="empty"><div class="ei">\ud83c\udf38</div><div class="el">todavía no hay publicaciones aquí \u2014 sé el primero \u2756</div></div>`
       : posts.map(rpost).join('') + `<div id="scroll-sentinel" style="height:1px;margin:1rem 0"></div>`
     }`;
-  }
+
+  return header + composeCard + tabs + catsAndPosts;
 }
 
 function renderFollowingSection() {
@@ -463,6 +515,23 @@ function renderFeedFollowing() {
 // ----------------------------------------------------------------
 function setFeedTab(tab) {
   S.followTab = tab;
+  S.feedTab = tab; // mantener ambos en sync (script.js usa feedTab, script_follows usa followTab)
+
+  if (tab === 'explorar') {
+    goExplore();
+    return;
+  }
+
+  if (tab === 'comunidad') {
+    render();
+    if (S.communityPosts.length === 0) {
+      fetchCommunityPosts().then(() => {
+        if (S.feedTab === 'comunidad') render();
+      });
+    }
+    return;
+  }
+
   if (tab === 'siguiendo' && !S.followingLoaded) {
     fetchFollowingFeed();
   } else {
@@ -595,6 +664,13 @@ const _origBoot = boot;
 window.boot = function() {
   _origBoot();
   loadFollowingIds();
+};
+
+// Resetear followTab junto con feedTab cuando se va al feed
+const _origGofeedFollows = gofeed;
+window.gofeed = function() {
+  S.followTab = 'todos';
+  _origGofeedFollows();
 };
 
 // ----------------------------------------------------------------
