@@ -961,7 +961,22 @@ window.addEventListener('popstate', (e) => {
   }
 });
 
-function gofeed() { S.page='feed'; S.explorePage=false; S.communityPage=false; S.feedTab='todos'; S.puid=null; S.menu=null; renderPostMenu(); saveNavState(); document.title='inicio · sigilo'; nav(); render(); }
+function gofeed() {
+  S.page='feed'; S.explorePage=false; S.communityPage=false; S.feedTab='todos'; S.puid=null; S.menu=null;
+  renderPostMenu(); saveNavState(); document.title='inicio · sigilo'; nav();
+  // Si no hay posts en memoria (primera carga o memoria limpiada), hacer fetch antes de render
+  if (S.posts.length === 0) {
+    // Mostrar skeletons mientras carga
+    const mc = document.getElementById('mc');
+    if (mc) {
+      const sk = `<div class="skeleton-card"><div class="sk-head"><div class="sk-line sk-avatar"></div><div class="sk-meta"><div class="sk-line short"></div><div class="sk-line tiny"></div></div></div><div class="sk-line full"></div><div class="sk-line med"></div></div>`;
+      mc.innerHTML = `<div class="ftitle">inicio</div><div class="fsub">comparte decoraciones, letras, símbolos y más</div>${sk.repeat(4)}`;
+    }
+    fetchPosts();
+  } else {
+    render();
+  }
+}
 
 async function goCommunity() {
   S.page = 'community'; S.explorePage = false; S.communityPage = true; S.puid = null; S.menu = null;
@@ -1661,7 +1676,15 @@ function renderCollections(userFolders, col, own) {
 }
 
 // --- ACCIONES ---
-function setcat(c) { S.cat=c; S.menu=null; render(); }
+function setcat(c) {
+  S.cat=c; S.menu=null;
+  // Si no hay posts cargados, fetchear primero (evita categorías en blanco)
+  if (S.posts.length === 0 && !S.loading) {
+    fetchPosts();
+  } else {
+    render();
+  }
+}
 function setFeedTab(tab) {
   if (tab === 'explorar') { goExplore(); return; }
   S.feedTab = tab;
@@ -2501,6 +2524,7 @@ window.renderNotifBadge = function() {
 };
 
 // --- SETUP INFINITE SCROLL AL CARGAR EL FEED ---
+// Patch gofeed para asegurar que infinite scroll se configure tras cada visita al feed
 const _origGofeed = gofeed;
 window.gofeed = function() {
   _origGofeed();
