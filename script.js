@@ -1291,8 +1291,8 @@ function sharePost(id, e) {
   if (e) e.stopPropagation();
   id = isNaN(id)?id:Number(id);
   // Construir URL del post
-  const base = window.location.origin + window.location.pathname;
-  const url = `${base}?post=${id}`;
+  const base = window.location.origin;
+  const url = `${base}/post.html?id=${id}`;
   // Menú de opciones de compartir
   showShareMenu(id, url, e);
 }
