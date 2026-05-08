@@ -340,9 +340,9 @@ main{flex:1;padding:1.25rem;max-width:660px;margin:0 auto;width:100%;}
 
 /* comments */
 .csec{margin-top:.7rem;padding-top:.7rem;border-top:1px solid var(--bd);}
-.crow{display:flex;gap:.55rem;align-items:center;margin-bottom:.7rem;}
+.crow{display:flex;gap:.55rem;align-items:flex-end;margin-bottom:.7rem;}
 .cinput{
-  flex:1;padding:.47rem .85rem;border:1px solid var(--bd);
+  width:100%;padding:.47rem .85rem;border:1px solid var(--bd);
   border-radius:20px;background:var(--bg);color:var(--tx);
   outline:none;font-size:.8rem;font-family:var(--fb);transition:border-color .2s;
 }
@@ -662,6 +662,90 @@ header { position: relative; }
 /* ---- BOTON COPIAR ---- */
 .copy-btn { gap:.28rem; }
 .copy-btn:active { transform:scale(.95); }
+
+/* ---- BOTON COMPARTIR ---- */
+.share-btn { gap:.28rem; }
+.share-btn:active { transform:scale(.95); }
+
+/* ---- MENÚ DE COMPARTIR ---- */
+.share-menu-title {
+  font-size:.72rem;
+  color:var(--tx3);
+  text-transform:uppercase;
+  letter-spacing:.06em;
+  padding:.5rem .85rem .25rem;
+  font-family:var(--fb);
+}
+
+/* ---- RESPUESTAS A COMENTARIOS ---- */
+.cinput-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.reply-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .4rem;
+  padding: .28rem .65rem;
+  background: var(--w4);
+  border: 1px solid var(--w3);
+  border-bottom: none;
+  border-radius: var(--r2) var(--r2) 0 0;
+  font-size: .73rem;
+  color: var(--tx2);
+}
+.reply-indicator b { color: var(--w1); font-weight: 600; }
+.reply-cancel-btn {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  font-size: .68rem;
+  color: var(--tx3);
+  padding: .1rem .3rem;
+  border-radius: 4px;
+  font-family: var(--fb);
+  flex-shrink: 0;
+}
+.reply-cancel-btn:hover { color: #a33; background: #fdf0f0; }
+
+/* Cuando hay reply activo, redondear el input solo abajo */
+.reply-indicator[style*="display:flex"] + .cinput,
+.reply-indicator:not([style*="none"]) + .cinput {
+  border-radius: 0 0 var(--r2) var(--r2);
+}
+
+/* Comentarios que son respuesta (indentados) */
+.cm-reply {
+  margin-left: 1.6rem;
+  border-left: 2px solid var(--w4);
+  padding-left: .55rem;
+}
+
+/* Botón de responder en comentarios */
+.cmt-reply-btn {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  font-size: .67rem;
+  color: var(--tx3);
+  padding: .1rem .32rem;
+  border-radius: 4px;
+  font-family: var(--fb);
+  transition: color .15s, background .15s;
+}
+.cmt-reply-btn:hover { color: var(--w1); background: var(--w4); }
+
+/* Label "↳ respondiendo a" en comentario */
+.cmt-reply-to {
+  font-size: .67rem;
+  color: var(--w1);
+  font-weight: 400;
+  opacity: .8;
+}
 
 /* ---- CARGAR MAS ---- */
 .load-more-btn {
