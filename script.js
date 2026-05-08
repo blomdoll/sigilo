@@ -491,7 +491,6 @@ async function boot() {
   fetchFolders();
   loadNotifs();
   subscribeCommunityPosts();
-  // Verificar badge al arrancar (puede haber posts nuevos desde la última visita)
   fetchCommunityPosts().then(() => renderCommunityDot());
   startTimestampRefresh();
 }
@@ -626,21 +625,14 @@ async function logout() {
 }
 
 // --- BADGE DE COMUNIDAD ---
-// Guarda en localStorage el created_at del último post de comunidad visto
 const COMM_SEEN_KEY = 'sigilo_comm_seen';
-
-function getCommSeen() {
-  try { return localStorage.getItem(COMM_SEEN_KEY) || ''; } catch(e) { return ''; }
-}
-function setCommSeen(ts) {
-  try { localStorage.setItem(COMM_SEEN_KEY, ts); } catch(e) {}
-}
+function getCommSeen() { try { return localStorage.getItem(COMM_SEEN_KEY) || ''; } catch(e) { return ''; } }
+function setCommSeen(ts) { try { localStorage.setItem(COMM_SEEN_KEY, ts); } catch(e) {} }
 
 function renderCommunityDot() {
   const dot = document.getElementById('comm-dot');
   if (!dot) return;
   const seen = getCommSeen();
-  // Hay posts nuevos si el post más reciente de comunidad es posterior al último visto
   const latest = S.communityPosts.length > 0 ? S.communityPosts[0].created_at : null;
   const hasNew = latest && (!seen || latest > seen);
   dot.classList.toggle('visible', !!hasNew);
@@ -650,30 +642,12 @@ let _communityChannel = null;
 function subscribeCommunityPosts() {
   if (_communityChannel) return;
   _communityChannel = db.channel('community_posts')
-    .on('postgres_changes', {
-      event: 'INSERT',
-      schema: 'public',
-      table: 'posts',
-      filter: 'is_community=eq.true',
-    }, payload => {
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts', filter: 'is_community=eq.true' }, payload => {
       const p = payload.new;
-      const newPost = {
-        ...p,
-        likes: Array.isArray(p.likes) ? p.likes : [],
-        cmts:  Array.isArray(p.cmts)  ? p.cmts  : [],
-        saved: Array.isArray(p.saved) ? p.saved : [],
-        t: p.created_at,
-      };
-      // Evitar duplicados
-      if (!S.communityPosts.find(x => x.id === newPost.id)) {
-        S.communityPosts.unshift(newPost);
-      }
-      // Si estamos dentro de comunidad, re-renderizar; si no, mostrar el badge
-      if (S.page === 'community') {
-        renderCommunity();
-      } else {
-        renderCommunityDot();
-      }
+      const newPost = { ...p, likes: Array.isArray(p.likes)?p.likes:[], cmts: Array.isArray(p.cmts)?p.cmts:[], saved: Array.isArray(p.saved)?p.saved:[], t: p.created_at };
+      if (!S.communityPosts.find(x => x.id === newPost.id)) S.communityPosts.unshift(newPost);
+      if (S.page === 'community') renderCommunity();
+      else renderCommunityDot();
     })
     .subscribe();
 }
@@ -998,10 +972,7 @@ async function goCommunity() {
     mc.innerHTML = `<div class="ftitle">comunidad</div><div class="fsub">búsquedas, conversaciones y todo lo del sitio</div>${sk.repeat(4)}`;
   }
   await fetchCommunityPosts();
-  // Marcar como visto: guardar el created_at del post más reciente
-  if (S.communityPosts.length > 0) {
-    setCommSeen(S.communityPosts[0].created_at);
-  }
+  if (S.communityPosts.length > 0) setCommSeen(S.communityPosts[0].created_at);
   renderCommunityDot();
   renderCommunity();
 }
@@ -1816,7 +1787,7 @@ function fallbackCopy(text) {
 
 // Helper: busca un post en S.posts O en S.communityPosts
 function findPost(id) {
-  return findPost(id) || S.communityPosts.find(x=>x.id===id) || null;
+  return S.posts.find(x=>x.id===id) || S.communityPosts.find(x=>x.id===id) || null;
 }
 window.findPost = findPost;
 
@@ -2721,7 +2692,7 @@ function injectChatBtnIntoHeader() {
   if (!chatBtn || container.contains(chatBtn)) return;
   container.appendChild(chatBtn);
 }
-
+// Intentar inmediatamente y también después de un pequeño delay por si script_chat carga tarde
 injectChatBtnIntoHeader();
 setTimeout(injectChatBtnIntoHeader, 500);
 setTimeout(injectChatBtnIntoHeader, 1500);
