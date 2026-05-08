@@ -36,6 +36,9 @@ const S = {
   pinnedPosts: {}, // { userId: postId } — un post anclado por usuario
   explorePage: false, // si estamos en la página explorar
   feedTab: 'todos', // tab activa en el feed: 'todos' | 'explorar' | 'siguiendo'
+  communityPage: false, // si estamos en la sección de comunidad
+  communityPosts: [], // posts de comunidad
+  communityLoading: false,
   replyTo: {}, // { postId: { cmtId, un } } — comentario al que se responde actualmente
 };
 window.S = S; // Expone globalmente para script_chat.js y otros módulos
@@ -161,7 +164,7 @@ function gosettings() {
   renderPostMenu();
   document.title = 'ajustes · sigilo';
   // Actualizar nav
-  ['nf','np','nc'].forEach(id => {
+  ['nf','ne','ncom','np','nc'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.className = 'nbtn';
   });
@@ -521,6 +524,7 @@ async function fetchPosts(reset = true) {
     ({ data, error } = await db
       .from('posts')
       .select('*')
+      .or('is_community.is.null,is_community.eq.false')
       .order('created_at', { ascending: false })
       .range(desde, hasta));
   } catch(e) {
@@ -806,7 +810,7 @@ async function deleteFolder(id) {
 
 async function assignToFolder(postId, folderId) {
   postId = isNaN(postId) ? postId : Number(postId);
-  const p = S.posts.find(x => x.id === postId); if (!p) return;
+  const p = findPost(postId); if (!p) return;
   const newFolder = p.folder_id === folderId ? null : folderId;
   p.folder_id = newFolder;
   if (newFolder) p.col = true;
@@ -919,7 +923,110 @@ window.addEventListener('popstate', (e) => {
   }
 });
 
-function gofeed() { S.page='feed'; S.explorePage=false; S.feedTab='todos'; S.puid=null; S.menu=null; renderPostMenu(); saveNavState(); document.title='inicio · sigilo'; nav(); render(); }
+function gofeed() { S.page='feed'; S.explorePage=false; S.communityPage=false; S.feedTab='todos'; S.puid=null; S.menu=null; renderPostMenu(); saveNavState(); document.title='inicio · sigilo'; nav(); render(); }
+
+async function goCommunity() {
+  S.page = 'community'; S.explorePage = false; S.communityPage = true; S.puid = null; S.menu = null;
+  renderPostMenu(); saveNavState(); document.title = 'comunidad · sigilo'; nav();
+  const mc = document.getElementById('mc');
+  if (mc) {
+    const sk = `<div class="skeleton-card"><div class="sk-head"><div class="sk-line sk-avatar"></div><div class="sk-meta"><div class="sk-line short"></div><div class="sk-line tiny"></div></div></div><div class="sk-line full"></div><div class="sk-line med"></div></div>`;
+    mc.innerHTML = `<div class="ftitle">comunidad</div><div class="fsub">búsquedas, conversaciones y todo lo del sitio</div>${sk.repeat(4)}`;
+  }
+  await fetchCommunityPosts();
+  renderCommunity();
+}
+
+async function fetchCommunityPosts(reset = true) {
+  if (S.communityLoading) return;
+  S.communityLoading = true;
+  try {
+    const { data, error } = await db
+      .from('posts')
+      .select('*')
+      .eq('is_community', true)
+      .order('created_at', { ascending: false })
+      .range(0, 29);
+    if (!error && data) {
+      S.communityPosts = data.map(p => ({
+        ...p,
+        likes: Array.isArray(p.likes) ? p.likes : [],
+        cmts: Array.isArray(p.cmts) ? p.cmts : [],
+        saved: Array.isArray(p.saved) ? p.saved : [],
+        t: p.created_at
+      }));
+    }
+  } catch(e) { console.error(e); }
+  S.communityLoading = false;
+}
+
+function renderCommunity() {
+  if (S.page !== 'community') return;
+  const mc = document.getElementById('mc');
+  if (!mc) return;
+  const posts = S.communityPosts;
+  mc.innerHTML = `
+    <div class="ftitle">comunidad</div>
+    <div class="fsub">búsquedas, conversaciones y todo lo del sitio</div>
+    <div class="compose">
+      <div class="compose-head">${avEl(S.me)}<textarea id="ct-comm" class="ct" placeholder="inicia una conversación, haz una búsqueda..." maxlength="${MAX_CHARS}" oninput="this.style.height='';this.style.height=this.scrollHeight+'px'"></textarea></div>
+      <div class="compose-foot">
+        <span class="char-count" id="cc-comm">0/${MAX_CHARS}</span>
+        <button class="pbtn" onclick="postCommunity()">publicar</button>
+      </div>
+    </div>
+    ${posts.length === 0
+      ? `<div class="empty"><div class="ei">💬</div><div class="el">aún no hay publicaciones en comunidad — ¡sé el primero!</div></div>`
+      : posts.map(rpost).join('')
+    }`;
+  // Char counter
+  const ta = document.getElementById('ct-comm');
+  const cc = document.getElementById('cc-comm');
+  if (ta && cc) {
+    ta.addEventListener('input', () => { cc.textContent = ta.value.length + '/' + MAX_CHARS; });
+  }
+}
+
+async function postCommunity() {
+  const ta = document.getElementById('ct-comm');
+  if (!ta) return;
+  const txt = ta.value.trim();
+  if (!txt) return toast('escribe algo primero');
+  if (txt.length > MAX_CHARS) return toast('máximo ' + MAX_CHARS + ' caracteres');
+  const btn = document.querySelector('.pbtn');
+  if (btn) { btn.textContent = 'publicando...'; btn.disabled = true; }
+  const { data, error } = await db.from('posts').insert([{
+    body: txt,
+    category: 'comunidad',
+    is_community: true,
+    user_id: S.me.id,
+    username: S.me.user_metadata?.display_name || S.me.email,
+    author_av: S.me.user_metadata?.avatar_url || null
+  }]).select();
+  if (btn) { btn.textContent = 'publicar'; btn.disabled = false; }
+  if (error) { toast('Error: ' + error.message); return; }
+  if (data && data[0]) {
+    const np = { ...data[0], likes: [], cmts: [], saved: [], t: data[0].created_at };
+    S.communityPosts.unshift(np);
+  }
+  // Re-render wherever community is shown (feed tab or standalone page)
+  if (S.page === 'community') {
+    renderCommunity();
+  } else {
+    render();
+  }
+  setTimeout(() => {
+    const ta = document.getElementById('ct-comm');
+    if (ta) ta.value = '';
+    const cc = document.getElementById('cc-comm');
+    if (cc) cc.textContent = '0/' + MAX_CHARS;
+    const first = document.querySelector('.pcard');
+    if (first) { first.classList.add('new-post'); setTimeout(() => first.classList.remove('new-post'), 400); }
+  }, 30);
+}
+window.goCommunity = goCommunity;
+window.postCommunity = postCommunity;
+window.renderCommunity = renderCommunity;
 function goprofile() {
   const myId = S.me.id;
   S.page = 'profile'; S.explorePage = false; S.puid = myId; S.ptab = 'posts'; S.menu = null;
@@ -971,8 +1078,9 @@ async function vprof(id) {
 }
 
 function nav() {
-  ['nf','ne','np','nc'].forEach(id => { const el=document.getElementById(id); if(el) el.className='nbtn'; });
+  ['nf','ne','ncom','np','nc'].forEach(id => { const el=document.getElementById(id); if(el) el.className='nbtn'; });
   if (S.explorePage) { const el=document.getElementById('ne'); if(el) el.className='nbtn on'; }
+  else if (S.communityPage) { const el=document.getElementById('ncom'); if(el) el.className='nbtn on'; }
   else if (S.page === 'feed') { const el=document.getElementById('nf'); if(el) el.className='nbtn on'; }
   else if (S.page === 'profile') { const el=document.getElementById('np'); if(el) el.className='nbtn on'; }
   else if (S.page === 'settings') { const el=document.getElementById('nc'); if(el) el.className='nbtn on'; }
@@ -1002,6 +1110,7 @@ function render() {
   const mc = document.getElementById('mc');
   if (mc) {
     if (S.page === 'settings') mc.innerHTML = rsettings();
+    else if (S.page === 'community') renderCommunity();
     else mc.innerHTML = S.page==='feed' ? rfeed() : rprofile();
   }
   renderFolderPickerModal();
@@ -1040,7 +1149,7 @@ function renderFolderPickerModal() {
   let el = document.getElementById('folderPickerModal');
   if (!el) { el = document.createElement('div'); el.id='folderPickerModal'; document.body.appendChild(el); }
   if (S.folderPostModal === null) { el.innerHTML=''; return; }
-  const post = S.posts.find(x => x.id === S.folderPostModal);
+  const post = findPost(S.folderPostModal);
   const myFolders = S.folders.filter(f => f.user_id === S.me.id);
   el.innerHTML = `<div class="mov" onclick="if(event.target===this)closeFolderPicker()">
     <div class="mdl">
@@ -1095,7 +1204,7 @@ function renderEditModal() {
   let el = document.getElementById('editPostModal');
   if (!el) { el = document.createElement('div'); el.id='editPostModal'; document.body.appendChild(el); }
   if (!S.editModal) { el.innerHTML=''; return; }
-  const p = S.posts.find(x => x.id === S.editModal);
+  const p = findPost(S.editModal);
   if (!p) { el.innerHTML=''; return; }
   el.innerHTML = `<div class="mov" onclick="if(event.target===this)closeEditPost()">
     <div class="mdl">
@@ -1135,15 +1244,38 @@ async function saveEditPost(id) {
   if (body.length > MAX_CHARS) return toast('máximo '+MAX_CHARS+' caracteres');
   const { error } = await db.from('posts').update({ body, category }).eq('id', id);
   if (error) return toast('Error al guardar');
-  const p = S.posts.find(x => x.id === id);
+  const p = findPost(id);
   if (p) { p.body = body; p.category = category; }
   S.editModal = null; toast('publicación editada'); render();
 }
 
 // --- FEED ---
+function rCommunitySection() {
+  const postsHtml = S.communityPosts.length === 0
+    ? '<div class="empty"><div class="ei">💬</div><div class="el">aún no hay publicaciones en comunidad — ¡sé el primero!</div></div>'
+    : S.communityPosts.map(rpost).join('');
+  return '<div class="community-tab-inline">' +
+    '<div class="compose">' +
+      '<div class="compose-head">' + avEl(S.me) + '<textarea id="ct-comm" class="ct" placeholder="inicia una conversación, haz una búsqueda..." maxlength="' + MAX_CHARS + '" oninput="this.style.height=\'\';this.style.height=this.scrollHeight+\'px\'"></textarea></div>' +
+      '<div class="compose-foot">' +
+        '<span class="char-count" id="cc-comm">0/' + MAX_CHARS + '</span>' +
+        '<button class="pbtn" onclick="postCommunity()">publicar</button>' +
+      '</div>' +
+    '</div>' +
+    postsHtml +
+  '</div>';
+}
+
 function rfeed() {
   const posts = S.cat==='todos' ? [...S.posts] : S.posts.filter(p=>p.category===S.cat);
   const composeCat = S.composeCat || CATS[1]; // default primera categoría
+  const isComunidad = S.feedTab === 'comunidad';
+  const catsAndPosts = isComunidad ? '' : (
+    '<div class="cats">' + CATS.map(c=>'<button class="catb' + (S.cat===c?' on':'') + '" onclick="setcat(\'' + c + '\')">' + c + '</button>').join('') + '</div>' +
+    (posts.length===0
+      ? '<div class="empty"><div class="ei">🌸</div><div class="el">todavía no hay publicaciones aquí — sé el primero ✦</div></div>'
+      : posts.map(rpost).join('') + '<div id="scroll-sentinel" style="height:1px;margin:1rem 0"></div>')
+  );
   return `
   <div class="ftitle">inicio</div>
   <div class="fsub">comparte decoraciones, letras, símbolos y más</div>
@@ -1170,15 +1302,12 @@ function rfeed() {
     <div class="explore-banner-arrow"><i class="fi fi-rr-angle-right"></i></div>
   </div>
   <div class="feed-tabs">
-    <button class="feed-tab${S.feedTab!=='siguiendo'&&S.feedTab!=='explorar'?' on':''}" onclick="setFeedTab('todos')">✦ todos</button>
-    <button class="feed-tab${S.feedTab==='explorar'?' on':''}" onclick="setFeedTab('explorar')">explorar</button>
+    <button class="feed-tab${S.feedTab!=='siguiendo'&&S.feedTab!=='explorar'&&S.feedTab!=='comunidad'?' on':''}" onclick="setFeedTab('todos')">✦ todos</button>
+    <button class="feed-tab${S.feedTab==='comunidad'?' on':''}" onclick="setFeedTab('comunidad')">comunidad</button>
     <button class="feed-tab${S.feedTab==='siguiendo'?' on':''}" onclick="setFeedTab('siguiendo')">siguiendo</button>
   </div>
-  <div class="cats">${CATS.map(c=>`<button class="catb${S.cat===c?' on':''}" onclick="setcat('${c}')">${c}</button>`).join('')}</div>
-  ${posts.length===0
-    ? `<div class="empty"><div class="ei">🌸</div><div class="el">todavía no hay publicaciones aquí — sé el primero ✦</div></div>`
-    : posts.map(rpost).join('') + `<div id="scroll-sentinel" style="height:1px;margin:1rem 0"></div>`
-  }`;
+  ${isComunidad ? rCommunitySection() : catsAndPosts}
+  `;
 }
 
 function rpost(p) {
@@ -1342,7 +1471,7 @@ function nativeShare(postId, encodedUrl) {
   postId = isNaN(postId)?postId:Number(postId);
   const el = document.getElementById('shareMenuPortal');
   if (el) el.remove();
-  const p = S.posts.find(x => x.id === postId);
+  const p = findPost(postId);
   if (navigator.share) {
     navigator.share({
       title: 'sigilo',
@@ -1492,6 +1621,27 @@ function setFeedTab(tab) {
   if (tab === 'explorar') { goExplore(); return; }
   S.feedTab = tab;
   S.menu = null;
+  if (tab === 'comunidad') {
+    render();
+    // Fetch community posts if not loaded yet
+    if (S.communityPosts.length === 0) {
+      fetchCommunityPosts().then(() => {
+        if (S.feedTab === 'comunidad') render();
+        setTimeout(() => {
+          const ta = document.getElementById('ct-comm');
+          const cc = document.getElementById('cc-comm');
+          if (ta && cc) ta.addEventListener('input', () => { cc.textContent = ta.value.length + '/' + MAX_CHARS; });
+        }, 50);
+      });
+    } else {
+      setTimeout(() => {
+        const ta = document.getElementById('ct-comm');
+        const cc = document.getElementById('cc-comm');
+        if (ta && cc) ta.addEventListener('input', () => { cc.textContent = ta.value.length + '/' + MAX_CHARS; });
+      }, 50);
+    }
+    return;
+  }
   render();
 }
 window.setFeedTab = setFeedTab;
@@ -1519,7 +1669,7 @@ function renderPostMenu() {
   let el = document.getElementById('postMenuPortal');
   if (!el) { el = document.createElement('div'); el.id='postMenuPortal'; document.body.appendChild(el); }
   if (!S.menu || !S.menuPos) { el.innerHTML=''; return; }
-  const p = S.posts.find(x=>x.id===S.menu);
+  const p = findPost(S.menu);
   if (!p) { el.innerHTML=''; return; }
   const { top, right } = S.menuPos;
   el.innerHTML = `<div class="pmenu" style="position:fixed;top:${top}px;right:${right}px;z-index:9999;min-width:170px">
@@ -1576,7 +1726,7 @@ async function post() {
 
 function copyPost(id) {
   id = isNaN(id)?id:Number(id);
-  const p = S.posts.find(x=>x.id===id); if(!p) return;
+  const p = findPost(id); if(!p) return;
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(p.body).then(()=>toast('copiado al portapapeles')).catch(()=>fallbackCopy(p.body));
   } else { fallbackCopy(p.body); }
@@ -1590,9 +1740,15 @@ function fallbackCopy(text) {
   document.body.removeChild(ta);
 }
 
+// Helper: busca un post en S.posts O en S.communityPosts
+function findPost(id) {
+  return findPost(id) || S.communityPosts.find(x=>x.id===id) || null;
+}
+window.findPost = findPost;
+
 async function tlike(id) {
   id=isNaN(id)?id:Number(id);
-  const p=S.posts.find(x=>x.id===id); if(!p) return;
+  const p=findPost(id); if(!p) return;
   if(!Array.isArray(p.likes)) p.likes=[];
   const i=p.likes.indexOf(S.me.id);
   const wasLiked = i>-1;
@@ -1623,7 +1779,7 @@ async function tlike(id) {
 
 async function tsave(id) {
   id=isNaN(id)?id:Number(id);
-  const p=S.posts.find(x=>x.id===id); if(!p) return;
+  const p=findPost(id); if(!p) return;
   if(!Array.isArray(p.saved)) p.saved=[];
   const i=p.saved.indexOf(S.me.id);
   if(i>-1){p.saved.splice(i,1);}else{p.saved.push(S.me.id);}
@@ -1649,7 +1805,7 @@ async function tsave(id) {
 
 async function tocol(id) {
   id=isNaN(id)?id:Number(id);
-  const p=S.posts.find(x=>x.id===id); if(!p) return;
+  const p=findPost(id); if(!p) return;
   p.col=!p.col; if(!p.col) p.folder_id=null;
   // Cerrar menú sin re-render completo
   S.menu=null;
@@ -1665,7 +1821,7 @@ async function dpost(id) {
   id=isNaN(id)?id:Number(id);
   const {error}=await db.from('posts').delete().eq('id',id);
   if(error) toast('Error al eliminar');
-  else { S.posts=S.posts.filter(x=>x.id!==id); S.menu=null; toast('publicación eliminada'); render(); }
+  else { S.posts=S.posts.filter(x=>x.id!==id); S.communityPosts=S.communityPosts.filter(x=>x.id!==id); S.menu=null; toast('publicación eliminada'); render(); }
 }
 
 function tcmt(id) {
@@ -1674,7 +1830,7 @@ function tcmt(id) {
   const cid = safeId(id);
   const card = document.getElementById(`post-${cid}`);
   if (!card) { render(); return; }
-  const p = S.posts.find(x=>x.id===id);
+  const p = findPost(id);
   if (!p) { render(); return; }
   // Update comment button icon and class
   const cmtBtn = card.querySelector('.pacts .comment-btn');
@@ -1722,7 +1878,7 @@ async function scmt(id) {
   const txt = inp.value.trim(); 
   if (!txt) return;
 
-  const p = S.posts.find(x => x.id === id); 
+  const p = findPost(id); 
   if (!p) return;
   if (!Array.isArray(p.cmts)) p.cmts = [];
 
@@ -1775,7 +1931,7 @@ async function scmt(id) {
 
 async function dcmt(postId, cmtId) {
   postId = isNaN(postId) ? postId : Number(postId);
-  const p = S.posts.find(x => x.id === postId); 
+  const p = findPost(postId); 
   if (!p || !Array.isArray(p.cmts)) return;
 
   const nuevosComentarios = p.cmts.filter(c => c.id !== cmtId);
@@ -2213,7 +2369,7 @@ function savePinnedPostsToStorage() {
 
 function pinPost(postId) {
   postId = isNaN(postId)?postId:Number(postId);
-  const p = S.posts.find(x=>x.id===postId); if(!p) return;
+  const p = findPost(postId); if(!p) return;
   if (p.user_id !== S.me.id) return;
   const uid_key = S.me.id;
   if (S.pinnedPosts[uid_key] === postId) {
@@ -2233,7 +2389,7 @@ function pinPost(postId) {
 
 async function tlikeCmt(postId, cmtId) {
   postId = isNaN(postId)?postId:Number(postId);
-  const p = S.posts.find(x=>x.id===postId); if(!p) return;
+  const p = findPost(postId); if(!p) return;
   if(!Array.isArray(p.cmts)) p.cmts=[];
   const cmt = p.cmts.find(c=>c.id===cmtId); if(!cmt) return;
   if(!Array.isArray(cmt.likes)) cmt.likes=[];
@@ -2281,7 +2437,7 @@ window.copyPost = function(id) {
     }
   };
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    const post = S.posts.find(x => x.id === (isNaN(id)?id:Number(id)));
+    const post = findPost(isNaN(id)?id:Number(id));
     if (!post) return;
     navigator.clipboard.writeText(post.body).then(() => { toast('copiado'); doFeedback(); }).catch(() => { fallbackCopy(post.body); doFeedback(); });
   } else { _origCopyPost(id); doFeedback(); }
@@ -2347,11 +2503,11 @@ db.auth.refreshSession().then(({data, error})=>{
 // ======== MOBILE BOTTOM NAV ========
 
 function mobSetActive(tab) {
-  ['mob-home','mob-explore','mob-search','mob-notif','mob-profile','mob-settings'].forEach(id => {
+  ['mob-home','mob-explore','mob-community','mob-search','mob-notif','mob-profile','mob-settings'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.remove('active');
   });
-  const map = { home:'mob-home', explore:'mob-explore', search:'mob-search', notif:'mob-notif', profile:'mob-profile', settings:'mob-settings' };
+  const map = { home:'mob-home', explore:'mob-explore', community:'mob-community', search:'mob-search', notif:'mob-notif', profile:'mob-profile', settings:'mob-settings' };
   const el = document.getElementById(map[tab]);
   if (el) el.classList.add('active');
 }
@@ -2444,6 +2600,7 @@ window.nav = function() {
   _origNav();
   // Sincronizar mob-nav active
   if (S.explorePage) mobSetActive('explore');
+  else if (S.communityPage) mobSetActive('community');
   else if (S.page === 'settings') mobSetActive('settings');
   else if (S.page === 'profile') mobSetActive('profile');
   else mobSetActive('home');
