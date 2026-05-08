@@ -667,6 +667,14 @@ header { position: relative; }
 .share-btn { gap:.28rem; }
 .share-btn:active { transform:scale(.95); }
 
+@media (max-width: 640px) {
+  /* Ocultar la etiqueta de texto del botón compartir en móvil */
+  .share-btn .share-label { display: none; }
+  /* Reducir padding de botones de acción en móvil para que quepan */
+  .abtn { padding: .34rem .5rem; font-size: .76rem; gap: .22rem; }
+  .pacts { gap: .15rem; }
+}
+
 /* ---- MENÚ DE COMPARTIR ---- */
 .share-menu-title {
   font-size:.72rem;
