@@ -1416,7 +1416,7 @@ function rfeed() {
   </div>
   <div class="feed-tabs">
     <button class="feed-tab${S.feedTab!=='siguiendo'&&S.feedTab!=='explorar'&&S.feedTab!=='comunidad'?' on':''}" onclick="setFeedTab('todos')">✦ todos</button>
-    <button class="feed-tab${S.feedTab==='comunidad'?' on':''}" onclick="setFeedTab('comunidad')">comunidad</button>
+    <button class="feed-tab feed-tab-community${S.feedTab==='comunidad'?' on':''}" onclick="setFeedTab('comunidad')">comunidad</button>
     <button class="feed-tab${S.feedTab==='siguiendo'?' on':''}" onclick="setFeedTab('siguiendo')">siguiendo</button>
   </div>
   ${isComunidad ? rCommunitySection() : catsAndPosts}
