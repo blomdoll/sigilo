@@ -1,18 +1,14 @@
-// ================================================================
-// SIGILO — script_follows.js  (v2 — corregido)
-// Sistema de seguidores / siguiendo
-// ================================================================
-
 S.followTab        = 'todos';
 S.followingIds     = new Set();
+S.followersOfMe    = null;  
 S.followingPosts   = [];
 S.followingLoaded  = false;
 S.followListModal  = null;
 S.profileCounts    = {};
 
-// ----------------------------------------------------------------
+// ------------------
 // INICIALIZACIÓN
-// ----------------------------------------------------------------
+// ------------------
 async function loadFollowingIds() {
   if (!S.me) return;
   try {
@@ -26,9 +22,9 @@ async function loadFollowingIds() {
   } catch(e) { S.followingIds = new Set(); }
 }
 
-// ----------------------------------------------------------------
+// ---------------------
 // FOLLOW / UNFOLLOW
-// ----------------------------------------------------------------
+// ---------------------
 async function followUser(uid) {
   if (!S.me || uid === S.me.id) return;
   const btn = document.querySelector('.follow-btn');
@@ -156,8 +152,20 @@ async function loadProfileCounts(uid) {
 // LISTA DE SEGUIDORES / SIGUIENDO (modal)
 // ----------------------------------------------------------------
 async function openFollowList(uid, type) {
-  S.followListModal = { uid, type, title: type === 'followers' ? 'seguidores' : 'siguiendo', list: null };
+  S.followListModal = { uid, type, title: type === 'followers' ? 'seguidores' : 'siguiendo', list: null, profileUid: uid };
   renderFollowListModal();
+
+  // Cargar quiénes me siguen a mí (para mostrar "te sigue" / "no te sigue")
+  if (!S.followersOfMe && S.me) {
+    try {
+      const { data } = await db.from('follows')
+        .select('follower_id')
+        .eq('following_id', S.me.id);
+      S.followersOfMe = new Set((data || []).map(r => r.follower_id));
+    } catch(e) {
+      S.followersOfMe = new Set();
+    }
+  }
 
   try {
     // Intentar join directo (sin nombre de FK hardcodeado)
@@ -236,7 +244,7 @@ function renderFollowListModal() {
   }
   if (!S.followListModal) { el.innerHTML = ''; return; }
 
-  const { title, list } = S.followListModal;
+  const { title, list, type } = S.followListModal;
   const loading = list === null;
 
   let bodyHtml;
@@ -246,12 +254,39 @@ function renderFollowListModal() {
     bodyHtml = `<div class="follow-list-empty">aún no hay ${title} aquí</div>`;
   } else {
     bodyHtml = list.map(u => {
+      if (!u || !u.id) return '';
       const name = u.display_name || u.username || '?';
-      return `<div class="follow-list-row" onclick="closeFollowList();vprof('${u.id}')">
-        ${u.avatar_url
-          ? `<div class="av"><img src="${esc(u.avatar_url)}" alt=""/></div>`
-          : `<div class="av">${(name[0]||'?').toUpperCase()}</div>`}
-        <span class="follow-list-name">${esc(name)}</span>
+      const isSelf = u.id === S.me?.id;
+      const iFollow = S.followingIds.has(u.id);          // yo sigo a esta persona
+      const theyFollowMe = S.followersOfMe && S.followersOfMe.has(u.id); // esta persona me sigue
+
+      // Etiqueta "te sigue" solo visible en tab seguidores (siempre cierta allí)
+      // En tab siguiendo, mostrar "te sigue" si aplica
+      const mutualTag = theyFollowMe
+        ? `<span class="fl-mutual-tag">te sigue</span>`
+        : (type === 'followers' ? '' : `<span class="fl-mutual-tag fl-mutual-no">no te sigue</span>`);
+
+      // Botón seguir/dejar de seguir (no mostrar para uno mismo)
+      let actionBtn = '';
+      if (!isSelf) {
+        if (iFollow) {
+          actionBtn = `<button class="fl-follow-btn fl-following" onclick="flToggleFollow(event,'${u.id}',false)">siguiendo</button>`;
+        } else {
+          actionBtn = `<button class="fl-follow-btn" onclick="flToggleFollow(event,'${u.id}',true)">+ seguir</button>`;
+        }
+      }
+
+      return `<div class="follow-list-row">
+        <div onclick="closeFollowList();vprof('${u.id}')" style="display:flex;align-items:center;gap:.85rem;flex:1;min-width:0;cursor:pointer;">
+          ${u.avatar_url
+            ? `<div class="av"><img src="${esc(u.avatar_url)}" alt=""/></div>`
+            : `<div class="av">${(name[0]||'?').toUpperCase()}</div>`}
+          <div class="fl-name-block">
+            <span class="follow-list-name">${esc(name)}</span>
+            ${mutualTag}
+          </div>
+        </div>
+        ${actionBtn}
       </div>`;
     }).join('');
   }
@@ -266,6 +301,60 @@ function renderFollowListModal() {
     </div>
   </div>`;
 }
+
+// Seguir/dejar de seguir desde dentro del modal sin cerrarlo
+async function flToggleFollow(evt, uid, doFollow) {
+  evt.stopPropagation();
+  const btn = evt.currentTarget;
+  btn.disabled = true;
+  btn.textContent = '...';
+
+  if (doFollow) {
+    const { error } = await db.from('follows').insert([{ follower_id: S.me.id, following_id: uid }]);
+    if (!error) {
+      S.followingIds.add(uid);
+      const myName = S.me.user_metadata?.display_name || S.me.email;
+      try {
+        await db.from('notifications').insert([{
+          to_uid: uid, from_uid: S.me.id, from_name: myName,
+          type: 'follow', post_id: null, post_body: null, read: false,
+        }]);
+      } catch(e) {}
+      delete S.profileCounts[uid];
+      delete S.profileCounts[S.me.id];
+      S.followingLoaded = false;
+      toast('siguiendo \u2756');
+    } else {
+      toast('error al seguir');
+    }
+  } else {
+    const { error } = await db.from('follows').delete()
+      .eq('follower_id', S.me.id).eq('following_id', uid);
+    if (!error) {
+      S.followingIds.delete(uid);
+      delete S.profileCounts[uid];
+      delete S.profileCounts[S.me.id];
+      S.followingLoaded = false;
+      S.followingPosts = S.followingPosts.filter(p => p.user_id !== uid);
+      toast('dejaste de seguir');
+    } else {
+      toast('error al dejar de seguir');
+    }
+  }
+
+  // Re-renderizar solo el botón afectado sin cerrar el modal
+  renderFollowListModal();
+
+  // Actualizar contadores en el perfil si está visible
+  if (S.puid) {
+    loadProfileCounts(S.puid).then(() => {
+      const safeUid = S.puid.replace(/-/g,'_');
+      const countsEl = document.getElementById('follow-counts-' + safeUid);
+      if (countsEl) countsEl.outerHTML = renderFollowCounts(S.puid);
+    });
+  }
+}
+window.flToggleFollow = flToggleFollow;
 
 // ----------------------------------------------------------------
 // FEED "SIGUIENDO"
