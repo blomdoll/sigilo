@@ -334,6 +334,20 @@ async function boot() {
   // Refrescar URL firmada del avatar al iniciar sesión (reduce egress público)
   refreshMyAvatarUrl();
 
+  // Sincronizar bio desde profiles al arranque (por si auth no tiene el campo bio)
+  // Esto garantiza que S._profileBio esté disponible aunque el usuario no abra el modal
+  if (!S.me.user_metadata?.bio) {
+    db.from('profiles').select('bio').eq('id', S.me.id).single().then(({ data }) => {
+      if (data?.bio) {
+        S._profileBio = data.bio;
+        // Intentar sincronizar con auth en background
+        db.auth.updateUser({ data: { bio: data.bio } }).catch(() => {});
+      }
+    }).catch(() => {});
+  } else {
+    S._profileBio = S.me.user_metadata.bio;
+  }
+
   // ── ANUNCIOS: iniciar sistema de popup al arrancar ──────────────
   // Para publicar un anuncio, edita ANNOUNCE_CONFIG en script_announce.js
   if (typeof initAnnounce === 'function') initAnnounce();
@@ -1191,8 +1205,10 @@ function rprofile() {
   const displayName = own
     ? esc(S.me.user_metadata?.display_name || S.me.name || S.me.email || 'Usuario')
     : esc(user.display_name || user.username || user.name || 'Usuario');
+  // Para perfil propio: auth metadata > _profileBio (cargado desde profiles al abrir modal) > ''
+  // Para perfil ajeno: S.users cache (cargado en vprof) > ''
   const bioRaw = own
-    ? (S.me.user_metadata?.bio || S.me.bio || '')
+    ? (S.me.user_metadata?.bio || S._profileBio || '')
     : (user.bio || '');
   // Solo mostrar "cargando..." si es perfil ajeno Y user.bio es undefined (aún no llegaron datos del fetch)
   // Si bio es '' (cadena vacía), el usuario simplemente no escribió bio — mostrar "sin biografía aún"
@@ -1229,14 +1245,14 @@ function rprofile() {
     ${tab === 'saved' ? (svd.length ? svd.map(rpost).join('') : `<div class="empty"><div class="el">aún no guardaste nada</div></div>`) : ''}
     ${tab === 'col' ? renderCollections(userFolders, col, own) : ''}
   </div>
-  ${S.modal ? `<div class="mov" onclick="mclose(event)">
+  ${S.modal ? `<div class="mov profile-edit-modal" onclick="mclose(event)">
     <div class="mdl">
       <div class="mdlt">editar perfil</div>
       <div class="field"><label>Nombre</label><input id="en" value="${esc(S.me.user_metadata?.display_name || S.me.name || '')}"/></div>
-      <div class="field"><label>Biografía</label><textarea id="eb" placeholder="cuéntanos de ti...">${esc(S.me.user_metadata?.bio || S.me.bio || '')}</textarea></div>
+      <div class="field"><label>Biografía</label><textarea id="eb" rows="3" placeholder="cuéntanos de ti..." style="resize:vertical;min-height:72px">${esc(S.me.user_metadata?.bio ?? S._profileBio ?? '')}</textarea></div>
       <div class="macts">
         <button class="cancelbtn" onclick="closemod()">cancelar</button>
-        <button class="savebtn" onclick="savemod()">guardar</button>
+        <button class="savebtn profile-save-btn" onclick="savemod()">guardar</button>
       </div>
     </div>
   </div>` : ''}`;
@@ -1686,38 +1702,92 @@ async function havatar(e) {
   render(); toast('foto actualizada');
 }
 
-function openmod(){S.modal=true;render();}
+async function openmod() {
+  S.modal = true;
+  // Cargar bio desde profiles si auth no la tiene todavia
+  // (pasa cuando el usuario se registro y la bio solo quedo en profiles)
+  if (!S.me.user_metadata?.bio) {
+    try {
+      const { data } = await db.from('profiles')
+        .select('bio')
+        .eq('id', S.me.id)
+        .single();
+      if (data?.bio) {
+        S._profileBio = data.bio;
+        // Sincronizar bio con auth para futuras aperturas
+        try { await db.auth.updateUser({ data: { bio: data.bio } }); } catch(e2) {}
+        try {
+          const { data: refreshed } = await db.auth.refreshSession();
+          if (refreshed?.session?.user) S.me = refreshed.session.user;
+          else S.me.user_metadata.bio = data.bio;
+        } catch(e3) { S.me.user_metadata.bio = data.bio; }
+      } else {
+        S._profileBio = '';
+      }
+    } catch(e) { S._profileBio = ''; }
+  } else {
+    S._profileBio = S.me.user_metadata.bio;
+  }
+  render();
+}
 function closemod(){S.modal=false;render();}
 function mclose(e){if(e.target===e.currentTarget)closemod();}
 
 async function savemod() {
-  const n=document.getElementById('en').value.trim(), b=document.getElementById('eb').value.trim();
-  if(!n) return;
-  const btn = document.querySelector('#confirmModal .savebtn, .mdl .savebtn');
-  if (btn) { btn.textContent='guardando...'; btn.disabled=true; }
-  const {error}=await db.auth.updateUser({data:{display_name:n,bio:b}});
-  if (btn) { btn.textContent='guardar'; btn.disabled=false; }
-  if(error) { toast('Error al guardar perfil'); return; }
+  const enEl = document.getElementById('en');
+  const ebEl = document.getElementById('eb');
+  if (!enEl || !ebEl) return;
+  const n = enEl.value.trim();
+  const b = ebEl.value.trim();
+  if (!n) return toast('el nombre no puede estar vacío');
 
-  const oldName = S.me.user_metadata.display_name;
-  S.me.user_metadata.display_name=n; S.me.user_metadata.bio=b;
+  // Selector específico: solo el botón guardar dentro del modal de editar perfil
+  const btn = document.querySelector('.profile-edit-modal .savebtn, .profile-save-btn');
+  if (btn) { btn.textContent = 'guardando...'; btn.disabled = true; }
 
-  // 1. Sincronizar tabla profiles (para búsqueda)
+  const oldName = S.me.user_metadata?.display_name || '';
+
+  // 1. Guardar en Supabase Auth
+  const { error } = await db.auth.updateUser({ data: { display_name: n, bio: b } });
+  if (error) {
+    if (btn) { btn.textContent = 'guardar'; btn.disabled = false; }
+    return toast('Error al guardar perfil: ' + error.message);
+  }
+
+  // 2. Refrescar sesión para que S.me tenga los metadatos actualizados
   try {
-    await db.from('profiles').upsert([{ id: S.me.id, username: n, display_name: n, bio: b }], { onConflict: 'id' });
+    const { data: refreshed } = await db.auth.refreshSession();
+    if (refreshed?.session?.user) S.me = refreshed.session.user;
+    else {
+      // Actualizar manualmente si el refresh no devuelve usuario
+      S.me.user_metadata.display_name = n;
+      S.me.user_metadata.bio = b;
+    }
+  } catch(e) {
+    S.me.user_metadata.display_name = n;
+    S.me.user_metadata.bio = b;
+  }
+
+  // 3. Sincronizar tabla profiles — incluir avatar_path para no borrarlo
+  try {
+    const avatarPath = S.me.user_metadata?.avatar_path || null;
+    const upsertData = { id: S.me.id, username: n, display_name: n, bio: b };
+    if (avatarPath) upsertData.avatar_path = avatarPath;
+    await db.from('profiles').upsert([upsertData], { onConflict: 'id' });
   } catch(e) {}
 
-  // 2. Propagar el nuevo nombre a todos los posts existentes del usuario
-  //    Solo si realmente cambió el nombre para evitar updates innecesarios
+  // 4. Propagar el nuevo nombre a los posts si cambió
   if (n !== oldName) {
     try {
       await db.from('posts').update({ username: n }).eq('user_id', S.me.id);
     } catch(e) {}
-    // Reflejar el cambio en el estado local para que el feed no requiera recargar
     S.posts.forEach(p => { if (p.user_id === S.me.id) p.username = n; });
   }
 
-  S.modal=false; render(); toast('perfil actualizado');
+  if (btn) { btn.textContent = 'guardar'; btn.disabled = false; }
+  S.modal = false;
+  render();
+  toast('perfil actualizado ✦');
 }
 
 // --- TOGGLE PASSWORD VISIBILITY ---
