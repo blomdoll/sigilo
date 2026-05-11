@@ -3,6 +3,10 @@ const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 const db = window.supabase.createClient(supabaseUrl, supabaseKey);
 window.db = db;
 
+// --- CLOUDFLARE R2 CONFIG ---
+const R2_WORKER_URL = 'https://sigilo-avatar.wenvargasmg.workers.dev';
+const R2_UPLOAD_SECRET = 'sigilo-981415';
+
 let offset = 0; 
 const PAGE_SIZE = 10;
 
@@ -311,9 +315,9 @@ function hideLoading() {
 }
 
 async function refreshMyAvatarUrl() {
-  // Si el usuario tiene un avatar_path guardado, generamos una URL firmada fresca
+  // Con R2 las URLs son permanentes; solo refrescamos si aún tiene avatar en Supabase Storage
   const path = S.me?.user_metadata?.avatar_path;
-  if (!path) return;
+  if (!path) return; // ya usa R2 (url permanente) o no tiene avatar
   try {
     const { data, error } = await db.storage.from('avatars').createSignedUrl(path, 3600);
     if (!error && data?.signedUrl) {
@@ -2089,8 +2093,10 @@ function upavatar() { document.getElementById('avup').click(); }
 const _avatarCache = {}; // { userId: { url, expira } }
 
 async function getSignedAvatarUrl(userId, path) {
+  // Si no hay path, el usuario ya usa R2 (avatar_url permanente en profiles)
+  if (!path) return null;
+  // Compatibilidad: usuarios que aún tienen avatar en Supabase Storage
   const ahora = Date.now();
-  // Reutilizar URL en caché si aún es válida (55 min de margen antes de la hora)
   if (_avatarCache[userId] && _avatarCache[userId].expira > ahora) {
     return _avatarCache[userId].url;
   }
@@ -2111,37 +2117,40 @@ async function havatar(e) {
   if (refreshErr || !refreshData?.session) { toast('Sesión expirada. Vuelve a iniciar sesión.'); return; }
   S.me = refreshData.session.user;
 
-  // Usamos siempre el mismo nombre de archivo (sin extensión variable)
-  // para que la URL sea estable y predecible entre dispositivos
-  const path=`${S.me.id}/avatar`;
-  const {error:upErr}=await db.storage.from('avatars').upload(path,f,{
-    upsert:true,
-    contentType:f.type,
-    cacheControl:'31536000' // 1 año de caché en el navegador — reduce egress
-  });
-  if(upErr){toast('Error al subir imagen');return;}
+  // Subir a Cloudflare R2 via Worker (egress gratuito, URL permanente)
+  const form = new FormData();
+  form.append('file', f);
+  form.append('userId', S.me.id);
+  let publicUrl;
+  try {
+    const res = await fetch(R2_WORKER_URL, {
+      method: 'POST',
+      headers: { 'X-Upload-Secret': R2_UPLOAD_SECRET },
+      body: form,
+    });
+    if (!res.ok) { toast('Error al subir imagen: ' + await res.text()); return; }
+    const json = await res.json();
+    publicUrl = json.url;
+  } catch(err) {
+    toast('Error de conexión al subir imagen'); return;
+  }
 
-  // Invalidar caché local para que la próxima carga use la nueva imagen
+  // Limpiar caché local (compatibilidad)
   delete _avatarCache[S.me.id];
 
-  // Generar URL firmada (acceso autenticado — evita acceso público masivo)
-  const signedUrl = await getSignedAvatarUrl(S.me.id, path);
-  if (!signedUrl) { toast('Error al obtener URL del avatar'); return; }
-
-  // Guardamos el path en Auth y BD (no la URL completa, que expira)
-  // El path es suficiente para regenerar la URL firmada cuando se necesite
-  const {error:authErr}=await db.auth.updateUser({data:{avatar_path:path, avatar_url:signedUrl}});
+  // Guardar URL pública permanente en Auth (sin avatar_path — ya no se necesita con R2)
+  const {error:authErr}=await db.auth.updateUser({data:{avatar_url:publicUrl, avatar_path:null}});
   if(authErr){toast('Error al guardar avatar');return;}
 
-  S.me.user_metadata.avatar_url=signedUrl;
-  S.me.user_metadata.avatar_path=path;
-  // NO guardamos signedUrl en author_av de posts — esa URL expira en 1h y rompe avatares en el feed.
-  // Los posts del propio usuario usan S.me.user_metadata.avatar_url (siempre fresco).
-  // Guardar avatar_path (permanente) en profiles — cualquier visitante regenera URL desde aquí.
-  try { await db.from('profiles').upsert([{ id: S.me.id, avatar_path: path }], { onConflict: 'id' }); } catch(e) {}
-  // Actualizar posts locales en memoria para reflejar el cambio visualmente (solo sesión actual)
-  S.posts.forEach(p=>{ if(p.user_id===S.me.id) p.author_av=signedUrl; });
-  render(); toast('foto actualizada');
+  S.me.user_metadata.avatar_url=publicUrl;
+  S.me.user_metadata.avatar_path=null;
+
+  // Guardar en profiles para que otros usuarios vean el avatar actualizado
+  try { await db.from('profiles').upsert([{ id: S.me.id, avatar_url: publicUrl, avatar_path: null }], { onConflict: 'id' }); } catch(e) {}
+
+  // Actualizar posts locales en memoria
+  S.posts.forEach(p=>{ if(p.user_id===S.me.id) p.author_av=publicUrl; });
+  render(); toast('foto actualizada ✦');
 }
 
 async function openmod() {
