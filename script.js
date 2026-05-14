@@ -1,11 +1,19 @@
-const supabaseUrl = 'https://mgzbmpcirzeaqfzrpiro.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1nemJtcGNpcnplYXFmenJwaXJvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1NzQzNTgsImV4cCI6MjA5MzE1MDM1OH0.igJ1MqmbOSGCICdzWSqcl58zP7OTMQr3zF_g6t0F_1I';
-const db = window.supabase.createClient(supabaseUrl, supabaseKey);
-window.db = db;
-
-// --- CLOUDFLARE R2 CONFIG ---
-const R2_WORKER_URL = 'https://sigilo-avatar.wenvargasmg.workers.dev';
-const R2_UPLOAD_SECRET = 'sigilo-981415';
+// db se inicializa en neon-init.js (ESM) y queda disponible en window.db.
+// Se usa un Proxy para que cualquier acceso a `db` siempre lea window.db,
+// sin importar cuándo se resuelva el módulo ESM.
+const db = new Proxy({}, {
+  get(_, prop) {
+    if (!window.db) {
+      console.warn('[Sigilo] db aún no está listo. ¿Se llamó antes de neon-ready?');
+      // Devolver un objeto que absorba llamadas encadenadas sin romper
+      const noop = () => noop;
+      noop.then = undefined; // no es thenable
+      return noop;
+    }
+    const val = window.db[prop];
+    return typeof val === 'function' ? val.bind(window.db) : val;
+  }
+});
 
 let offset = 0; 
 const PAGE_SIZE = 10;
@@ -315,16 +323,9 @@ function hideLoading() {
 }
 
 async function refreshMyAvatarUrl() {
-  // Con R2 las URLs son permanentes; solo refrescamos si aún tiene avatar en Supabase Storage
-  const path = S.me?.user_metadata?.avatar_path;
-  if (!path) return; // ya usa R2 (url permanente) o no tiene avatar
-  try {
-    const { data, error } = await db.storage.from('avatars').createSignedUrl(path, 3600);
-    if (!error && data?.signedUrl) {
-      S.me.user_metadata.avatar_url = data.signedUrl;
-      _avatarCache[S.me.id] = { url: data.signedUrl, expira: Date.now() + 55 * 60 * 1000 };
-    }
-  } catch(e) {}
+  // Los avatares están en Cloudflare — la URL guardada en profiles/user_metadata
+  // es permanente y no necesita refresh. Esta función no hace nada.
+  return;
 }
 
 async function boot() {
@@ -343,14 +344,13 @@ async function boot() {
   // Refrescar URL firmada del avatar al iniciar sesión (reduce egress público)
   refreshMyAvatarUrl();
 
-  // Sincronizar bio desde profiles al arranque (por si auth no tiene el campo bio)
-  // Esto garantiza que S._profileBio esté disponible aunque el usuario no abra el modal
+  // Sincronizar bio desde profiles al arranque (fuente de verdad)
   if (!S.me.user_metadata?.bio) {
     db.from('profiles').select('bio').eq('id', S.me.id).single().then(({ data }) => {
       if (data?.bio) {
         S._profileBio = data.bio;
-        // Intentar sincronizar con auth en background
-        db.auth.updateUser({ data: { bio: data.bio } }).catch(() => {});
+        S.me.user_metadata = S.me.user_metadata || {};
+        S.me.user_metadata.bio = data.bio;
       }
     }).catch(() => {});
   } else {
@@ -681,17 +681,40 @@ function renderCommunityDot() {
 }
 
 let _communityChannel = null;
+let _communityPollInterval = null;
+let _communityLastTs = null;
+
 function subscribeCommunityPosts() {
-  if (_communityChannel) return;
-  _communityChannel = db.channel('community_posts')
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts', filter: 'is_community=eq.true' }, payload => {
-      const p = payload.new;
-      const newPost = { ...p, likes: Array.isArray(p.likes)?p.likes:[], cmts: Array.isArray(p.cmts)?p.cmts:[], saved: Array.isArray(p.saved)?p.saved:[], t: p.created_at };
-      if (!S.communityPosts.find(x => x.id === newPost.id)) S.communityPosts.unshift(newPost);
-      if (S.page === 'community') renderCommunity();
-      else renderCommunityDot();
-    })
-    .subscribe();
+  if (_communityPollInterval) return; // ya activo
+  // Polling cada 20 segundos como reemplazo de Supabase Realtime
+  _communityPollInterval = setInterval(async () => {
+    if (!S.me) return;
+    try {
+      let q = db.from('posts')
+        .select('*')
+        .eq('is_community', true)
+        .order('created_at', { ascending: false })
+        .limit(5);
+      if (_communityLastTs) {
+        q = q.gt('created_at', _communityLastTs);
+      }
+      const { data } = await q;
+      if (!data || data.length === 0) return;
+      _communityLastTs = data[0].created_at;
+      let hasNew = false;
+      data.forEach(p => {
+        if (!S.communityPosts.find(x => x.id === p.id)) {
+          const newPost = { ...p, likes: Array.isArray(p.likes)?p.likes:[], cmts: Array.isArray(p.cmts)?p.cmts:[], saved: Array.isArray(p.saved)?p.saved:[], t: p.created_at };
+          S.communityPosts.unshift(newPost);
+          hasNew = true;
+        }
+      });
+      if (hasNew) {
+        if (S.page === 'community') renderCommunity();
+        else renderCommunityDot();
+      }
+    } catch(e) {}
+  }, 20000);
 }
 
 // --- NOTIFICACIONES (Supabase Realtime) ---
@@ -726,30 +749,52 @@ async function loadNotifs() {
   subscribeNotifs();
 }
 
+let _notifChannel = null;
+let _notifPollInterval = null;
+let _notifLastTs = null;
+
 function subscribeNotifs() {
-  if (_notifChannel) return;
-  _notifChannel = db.channel('notifs_' + S.me.id)
-    .on('postgres_changes', {
-      event: 'INSERT',
-      schema: 'public',
-      table: 'notifications',
-      filter: `to_uid=eq.${S.me.id}`,
-    }, payload => {
-      const n = payload.new;
-      S.notifs.unshift({
-        id: n.id, type: n.type,
-        fromUid: n.from_uid, fromName: n.from_name,
-        postId: n.post_id, postBody: n.post_body,
-        ts: n.created_at, read: false,
+  if (_notifPollInterval) return;
+  // Polling cada 15 segundos — reemplaza Supabase Realtime
+  _notifPollInterval = setInterval(async () => {
+    if (!S.me) return;
+    try {
+      let q = db.from('notifications')
+        .select('*')
+        .eq('to_uid', S.me.id)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      if (_notifLastTs) {
+        q = q.gt('created_at', _notifLastTs);
+      }
+      const { data } = await q;
+      if (!data || data.length === 0) return;
+      _notifLastTs = data[0].created_at;
+      let hasNew = false;
+      data.forEach(n => {
+        if (!S.notifs.find(x => x.id === n.id)) {
+          S.notifs.unshift({
+            id: n.id, type: n.type,
+            fromUid: n.from_uid, fromName: n.from_name,
+            postId: n.post_id, postBody: n.post_body,
+            ts: n.created_at, read: false,
+          });
+          hasNew = true;
+        }
       });
-      renderNotifBadge();
-      if (S.notifOpen) renderNotifPanel();
-    })
-    .subscribe();
+      if (hasNew) {
+        renderNotifBadge();
+        if (S.notifOpen) renderNotifPanel();
+      }
+    } catch(e) {}
+  }, 15000);
 }
 
 function unsubscribeNotifs() {
-  if (_notifChannel) { db.removeChannel(_notifChannel); _notifChannel = null; }
+  if (_notifPollInterval) { clearInterval(_notifPollInterval); _notifPollInterval = null; }
+  if (_communityPollInterval) { clearInterval(_communityPollInterval); _communityPollInterval = null; }
+  _notifLastTs = null;
+  _communityLastTs = null;
 }
 
 async function saveNotif(toUid, type, fromName, postId, postBody) {
@@ -2093,70 +2138,33 @@ function upavatar() { document.getElementById('avup').click(); }
 const _avatarCache = {}; // { userId: { url, expira } }
 
 async function getSignedAvatarUrl(userId, path) {
-  // Si no hay path, el usuario ya usa R2 (avatar_url permanente en profiles)
-  if (!path) return null;
-  // Compatibilidad: usuarios que aún tienen avatar en Supabase Storage
-  const ahora = Date.now();
-  if (_avatarCache[userId] && _avatarCache[userId].expira > ahora) {
-    return _avatarCache[userId].url;
-  }
-  try {
-    const { data, error } = await db.storage.from('avatars').createSignedUrl(path, 3600);
-    if (error || !data?.signedUrl) return null;
-    _avatarCache[userId] = { url: data.signedUrl, expira: ahora + 55 * 60 * 1000 };
-    return data.signedUrl;
-  } catch(e) { return null; }
+  // Los avatares están en Cloudflare — la URL en avatar_url ya es permanente.
+  // Esta función existe por compatibilidad pero simplemente devuelve null para
+  // que el llamador use avatar_url directamente.
+  return null;
 }
 
 async function havatar(e) {
-  const f=e.target.files[0]; if(!f) return;
-  toast('subiendo foto...');
-
-  // Refrescar sesión antes de updateUser para evitar 403 Forbidden
-  const { data: refreshData, error: refreshErr } = await db.auth.refreshSession();
-  if (refreshErr || !refreshData?.session) { toast('Sesión expirada. Vuelve a iniciar sesión.'); return; }
-  S.me = refreshData.session.user;
-
-  // Subir a Cloudflare R2 via Worker (egress gratuito, URL permanente)
-  const form = new FormData();
-  form.append('file', f);
-  form.append('userId', S.me.id);
-  let publicUrl;
-  try {
-    const res = await fetch(R2_WORKER_URL, {
-      method: 'POST',
-      headers: { 'X-Upload-Secret': R2_UPLOAD_SECRET },
-      body: form,
-    });
-    if (!res.ok) { toast('Error al subir imagen: ' + await res.text()); return; }
-    const json = await res.json();
-    publicUrl = json.url;
-  } catch(err) {
-    toast('Error de conexión al subir imagen'); return;
-  }
-
-  // Limpiar caché local (compatibilidad)
-  delete _avatarCache[S.me.id];
-
-  // Guardar URL pública permanente en Auth (sin avatar_path — ya no se necesita con R2)
-  const {error:authErr}=await db.auth.updateUser({data:{avatar_url:publicUrl, avatar_path:null}});
-  if(authErr){toast('Error al guardar avatar');return;}
-
-  S.me.user_metadata.avatar_url=publicUrl;
-  S.me.user_metadata.avatar_path=null;
-
-  // Guardar en profiles para que otros usuarios vean el avatar actualizado
-  try { await db.from('profiles').upsert([{ id: S.me.id, avatar_url: publicUrl, avatar_path: null }], { onConflict: 'id' }); } catch(e) {}
-
-  // Actualizar posts locales en memoria
-  S.posts.forEach(p=>{ if(p.user_id===S.me.id) p.author_av=publicUrl; });
-  render(); toast('foto actualizada ✦');
+  // ⚠️ Los avatares se almacenan en Cloudflare, no en Supabase Storage ni Neon.
+  // Sube la imagen a tu endpoint de Cloudflare y luego actualiza avatar_url en
+  // profiles y en user_metadata con la URL pública resultante.
+  // Por ahora esta función muestra un aviso y no hace nada.
+  toast('Para cambiar el avatar, usa el panel de Cloudflare. Pronto se integrará aquí.');
+  // --- Implementación sugerida cuando tengas el endpoint de Cloudflare: ---
+  // const f = e.target.files[0]; if (!f) return;
+  // const formData = new FormData();
+  // formData.append('file', f);
+  // const res = await fetch('https://tu-worker.workers.dev/upload-avatar', { method: 'POST', body: formData });
+  // const { url } = await res.json();
+  // await db.from('profiles').upsert([{ id: S.me.id, avatar_url: url }], { onConflict: 'id' });
+  // S.me.user_metadata.avatar_url = url;
+  // S.posts.forEach(p => { if (p.user_id === S.me.id) p.author_av = url; });
+  // render(); toast('foto actualizada');
 }
 
 async function openmod() {
   S.modal = true;
-  // Cargar bio desde profiles si auth no la tiene todavia
-  // (pasa cuando el usuario se registro y la bio solo quedo en profiles)
+  // Cargar bio desde profiles si user_metadata no la tiene todavía
   if (!S.me.user_metadata?.bio) {
     try {
       const { data } = await db.from('profiles')
@@ -2165,13 +2173,8 @@ async function openmod() {
         .single();
       if (data?.bio) {
         S._profileBio = data.bio;
-        // Sincronizar bio con auth para futuras aperturas
-        try { await db.auth.updateUser({ data: { bio: data.bio } }); } catch(e2) {}
-        try {
-          const { data: refreshed } = await db.auth.refreshSession();
-          if (refreshed?.session?.user) S.me = refreshed.session.user;
-          else S.me.user_metadata.bio = data.bio;
-        } catch(e3) { S.me.user_metadata.bio = data.bio; }
+        S.me.user_metadata = S.me.user_metadata || {};
+        S.me.user_metadata.bio = data.bio;
       } else {
         S._profileBio = '';
       }
@@ -2198,32 +2201,22 @@ async function savemod() {
 
   const oldName = S.me.user_metadata?.display_name || '';
 
-  // 1. Guardar en Supabase Auth
+  // 1. Guardar en Neon Auth (updateUser — SupabaseAuthAdapter compatible)
   const { error } = await db.auth.updateUser({ data: { display_name: n, bio: b } });
   if (error) {
     if (btn) { btn.textContent = 'guardar'; btn.disabled = false; }
     return toast('Error al guardar perfil: ' + error.message);
   }
 
-  // 2. Refrescar sesión para que S.me tenga los metadatos actualizados
-  try {
-    const { data: refreshed } = await db.auth.refreshSession();
-    if (refreshed?.session?.user) S.me = refreshed.session.user;
-    else {
-      // Actualizar manualmente si el refresh no devuelve usuario
-      S.me.user_metadata.display_name = n;
-      S.me.user_metadata.bio = b;
-    }
-  } catch(e) {
-    S.me.user_metadata.display_name = n;
-    S.me.user_metadata.bio = b;
-  }
+  // 2. Actualizar S.me localmente (Neon Auth no siempre refleja metadatos al instante)
+  S.me.user_metadata = S.me.user_metadata || {};
+  S.me.user_metadata.display_name = n;
+  S.me.user_metadata.bio = b;
+  S._profileBio = b;
 
-  // 3. Sincronizar tabla profiles — incluir avatar_path para no borrarlo
+  // 3. Sincronizar tabla profiles
   try {
-    const avatarPath = S.me.user_metadata?.avatar_path || null;
     const upsertData = { id: S.me.id, username: n, display_name: n, bio: b };
-    if (avatarPath) upsertData.avatar_path = avatarPath;
     await db.from('profiles').upsert([upsertData], { onConflict: 'id' });
   } catch(e) {}
 
@@ -2617,15 +2610,22 @@ window.sharePost=sharePost; window.copyPostLink=copyPostLink; window.nativeShare
 window.startReply=startReply; window.cancelReply=cancelReply; window.renderComment=renderComment;
 
 showLoading();
-// Usar refreshSession en lugar de getSession para garantizar token válido y metadatos frescos
-db.auth.refreshSession().then(({data, error})=>{
-  if(data?.session){ S.me=data.session.user; boot(); }
-  else {
-    // Si no hay sesión activa, caer a getSession como fallback
-    db.auth.getSession().then(({data:{session}})=>{
-      if(session){ S.me=session.user; boot(); }
-      else { hideLoading(); document.getElementById('auth').style.display='flex'; }
-    });
+
+// Esperar a que neon-init.js haya cargado el SDK y expuesto window.db
+document.addEventListener('neon-ready', async () => {
+  // Verificar sesión activa
+  try {
+    const { data } = await db.auth.getSession();
+    if (data?.session) {
+      S.me = data.session.user;
+      boot();
+    } else {
+      hideLoading();
+      document.getElementById('auth').style.display = 'flex';
+    }
+  } catch(e) {
+    hideLoading();
+    document.getElementById('auth').style.display = 'flex';
   }
 });
 
