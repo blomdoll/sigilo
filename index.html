@@ -179,10 +179,11 @@
   <!-- Notificación toast -->
   <div class="toast" id="toast"></div>
 
-  <!-- Script principal -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js"></script>
-  <script src="script_follows.js"></script>
+  <!-- Cliente Neon (ESM — debe cargarse primero como módulo) -->
+  <script type="module" src="neon-init.js"></script>
+  <!-- Script principal (espera evento neon-ready antes de ejecutar boot) -->
+  <script src="script.js" defer></script>
+  <script src="script_follows.js" defer></script>
   <!-- Actualizaciones -->
   <script src="script_updates.js"></script>
   <script>
