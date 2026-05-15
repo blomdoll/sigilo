@@ -16,7 +16,8 @@
  */
 
 const CLERK_PUBLISHABLE_KEY = 'pk_live_Y2xlcmsuc2lnaWxvLnNwYWNlJA';  // ← tu clave
-const NEON_DATA_API_URL     = 'https://ep-raspy-pond-aqbpbpf7.c-8.us-east-1.aws.neon.tech/neondb/rest/v1';
+// El proxy /api/db reenvía las requests a Neon desde el servidor (resuelve CORS)
+const DB_PROXY_URL = '/api/db';
 
 // ─── Cargar Clerk SDK ────────────────────────────────────────────────
 import('https://esm.sh/@clerk/clerk-js@latest').then(async ({ Clerk }) => {
@@ -51,8 +52,8 @@ import('https://esm.sh/@clerk/clerk-js@latest').then(async ({ Clerk }) => {
   }
 
   function buildQuery(tableName) {
-    // Retorna un objeto que construye queries como Supabase
-    const client = new PostgrestClient(NEON_DATA_API_URL, {
+    // Apunta al proxy /api/db que reenvía a Neon (sin CORS)
+    const client = new PostgrestClient(DB_PROXY_URL, {
       fetch: async (url, opts = {}) => {
         const token = await getToken();
         return fetch(url, {
@@ -91,17 +92,21 @@ import('https://esm.sh/@clerk/clerk-js@latest').then(async ({ Clerk }) => {
       // signInWithPassword({ email, password })
       async signInWithPassword({ email, password }) {
         try {
-          // Clerk ClerkJS signIn flow
           const signIn = await clerk.client.signIn.create({
             identifier: email,
             password,
           });
-          if (signIn.status === 'complete') {
-            await clerk.setActive({ session: signIn.createdSessionId });
-            const user = clerk.user;
+          const sessionId = signIn.createdSessionId;
+          if (signIn.status === 'complete' || signIn.status === 'needs_second_factor') {
+            if (!sessionId) return { data: null, error: { message: 'Error al iniciar sesión.' } };
+            await clerk.setActive({ session: sessionId });
+            // Esperar a que clerk.user esté disponible tras setActive
+            let user = clerk.user;
+            if (!user) { await new Promise(r => setTimeout(r, 500)); user = clerk.user; }
+            if (!user) { await clerk.load(); user = clerk.user; }
             return { data: { user: _clerkUserToSupabase(user) }, error: null };
           }
-          return { data: null, error: { message: 'Error al iniciar sesión' } };
+          return { data: null, error: { message: 'Correo o contraseña incorrectos.' } };
         } catch(e) {
           return { data: null, error: { message: _clerkError(e) } };
         }
@@ -122,15 +127,17 @@ import('https://esm.sh/@clerk/clerk-js@latest').then(async ({ Clerk }) => {
             return { data: { user: _clerkUserToSupabase(clerk.user) }, error: null };
           }
 
-          // Si necesita verificar email
+          // Si necesita verificar email (Production requiere esto)
           if (signUp.status === 'missing_requirements') {
-            await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
-            // Guardar el signUp pendiente para verificarlo luego
+            try {
+              await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+            } catch(e2) { /* ya estaba preparado */ }
             window._pendingSignUp = signUp;
-            return { data: { user: null }, error: null }; // user null = "revisa tu correo"
+            // Devolver user null = script.js mostrará "revisa tu correo"
+            return { data: { user: null }, error: null };
           }
 
-          return { data: null, error: { message: 'No se pudo crear la cuenta' } };
+          return { data: null, error: { message: 'No se pudo crear la cuenta. Intenta de nuevo.' } };
         } catch(e) {
           return { data: null, error: { message: _clerkError(e) } };
         }
