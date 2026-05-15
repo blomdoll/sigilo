@@ -1,21 +1,7 @@
-/**
- * clerk-init.js
- * ─────────────────────────────────────────────────────────────────
- * Auth: Clerk JS SDK
- * Datos: PostgREST via proxy /api/db (Neon en el servidor)
- *
- * Expone window.db con la misma interfaz que usaba Supabase en script.js:
- *   - db.auth.getSession / signInWithPassword / signUp / signOut / updateUser
- *   - db.from('tabla').select / insert / upsert / update / delete + filtros
- *
- * Al terminar dispara el evento 'neon-ready' para que script.js arranque.
- * ─────────────────────────────────────────────────────────────────
- */
-
 const CLERK_PUBLISHABLE_KEY = 'pk_live_Y2xlcmsuc2lnaWxvLnNwYWNlJA';
 const DB_PROXY_URL = '/api/db';
 
-// ─── Helpers de error ──────────────────────────────────────────────────────
+// Helpers de error
 function clerkErrorMsg(e) {
   if (e?.errors?.length) return e.errors[0].longMessage || e.errors[0].message;
   return e?.message || 'Error desconocido';
@@ -34,10 +20,6 @@ function showFatalError(msg, detail = '') {
   }
 }
 
-// ─── Convertir usuario Clerk → formato que espera script.js ───────────────
-// ⚠️  CLAVE: usa externalId (= UUID original de Neon/Supabase) como .id
-//     para que todos los datos existentes (posts, follows, likes) funcionen.
-//     Para usuarios nuevos que no tienen externalId, usa clerk.user.id como fallback.
 function clerkUserToSupabase(user) {
   if (!user) return null;
   const displayName =
@@ -61,7 +43,6 @@ function clerkUserToSupabase(user) {
   };
 }
 
-// ─── Adaptador Auth: traduce API Supabase → Clerk ─────────────────────────
 function makeAuthAdapter(clerk) {
   return {
 
@@ -88,38 +69,32 @@ function makeAuthAdapter(clerk) {
     // Login con email + contraseña
     async signInWithPassword({ email, password }) {
       try {
-        const signIn = await clerk.client.signIn.create({
+        const result = await clerk.client.signIn.create({
+          strategy: 'password',
           identifier: email,
           password,
         });
 
-        if (signIn.status === 'complete') {
-          await clerk.setActive({ session: signIn.createdSessionId });
+        if (result.status === 'complete') {
+          await clerk.setActive({ session: result.createdSessionId });
 
-          // Esperar a que clerk.user esté disponible después de setActive
           let user = clerk.user;
-          for (let i = 0; i < 8 && !user; i++) {
+          for (let i = 0; i < 10 && !user; i++) {
             await new Promise(r => setTimeout(r, 200));
             user = clerk.user;
           }
 
-          if (!user) return { data: null, error: { message: 'Sesión iniciada pero no se pudo cargar el usuario. Recargá la página.' } };
+          if (!user) return { data: null, error: { message: 'Sesión iniciada pero no cargó el usuario. Recargá la página.' } };
           return { data: { user: clerkUserToSupabase(user) }, error: null };
-        }
-
-        // Necesita segundo factor u otro paso — raramente ocurre
-        if (signIn.status === 'needs_second_factor') {
-          return { data: null, error: { message: 'Tu cuenta requiere verificación en dos pasos. Configuralo desde Clerk.' } };
         }
 
         return { data: null, error: { message: 'Correo o contraseña incorrectos.' } };
       } catch (e) {
         const msg = clerkErrorMsg(e);
-        // Normalizar errores comunes de Clerk al español
-        if (msg.toLowerCase().includes('password') || msg.toLowerCase().includes('identifier') || msg.toLowerCase().includes('invalid')) {
+        if (msg.toLowerCase().includes('password') || msg.toLowerCase().includes('invalid') || msg.toLowerCase().includes('identifier')) {
           return { data: null, error: { message: 'Correo o contraseña incorrectos.' } };
         }
-        if (msg.toLowerCase().includes('too many') || msg.toLowerCase().includes('rate limit')) {
+        if (msg.toLowerCase().includes('too many') || msg.toLowerCase().includes('rate')) {
           return { data: null, error: { message: 'Demasiados intentos. Esperá unos minutos.' } };
         }
         return { data: null, error: { message: msg } };
@@ -137,7 +112,6 @@ function makeAuthAdapter(clerk) {
           username,
         });
 
-        // Registro completo inmediatamente (modo development sin email verification)
         if (signUp.status === 'complete') {
           await clerk.setActive({ session: signUp.createdSessionId });
           let user = clerk.user;
@@ -147,9 +121,7 @@ function makeAuthAdapter(clerk) {
           }
           return { data: { user: user ? clerkUserToSupabase(user) : null }, error: null };
         }
-
-        // Necesita verificar email (producción) → guardar signUp pendiente y devolver user null
-        // script.js interpreta user null como "revisa tu correo" y llama stab('login')
+        
         if (signUp.status === 'missing_requirements') {
           try {
             await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
@@ -205,22 +177,14 @@ function makeAuthAdapter(clerk) {
       }
     },
 
-    // No-op: Clerk no usa callbacks de cambio de estado como Supabase
     onAuthStateChange() {
       return { data: { subscription: { unsubscribe: () => {} } } };
     },
   };
 }
 
-// ─── Cliente de datos: PostgREST apuntando al proxy /api/db ───────────────
-// Construye cada query con el mismo patrón de Supabase que usa script.js:
-//   db.from('posts').select('*').eq('id', 1).single()
-//
-// El proxy /api/db en Vercel recibe la request, le agrega las credenciales
-// de Neon y la reenvía — así las credenciales nunca quedan en el frontend.
-
 function buildQueryClient(clerk) {
-  // Obtener token JWT de Clerk para autorizar las requests al proxy
+
   async function getToken() {
     try {
       return (await clerk.session?.getToken()) || null;
@@ -241,8 +205,6 @@ function buildQueryClient(clerk) {
     });
   }
 
-  // Importar PostgREST client (misma interfaz que Supabase para queries)
-  // Se importa dinámicamente para no bloquear si falla
   let _pgClient = null;
   async function getPgClient() {
     if (_pgClient) return _pgClient;
@@ -251,18 +213,11 @@ function buildQueryClient(clerk) {
     return _pgClient;
   }
 
-  // Devuelve db.from('tabla') — igual que Supabase
   return async function from(tableName) {
     const client = await getPgClient();
     return client.from(tableName);
   };
 }
-
-// ─── Objeto db completo que se expone como window.db ──────────────────────
-// Usa un Proxy para que db.from() pueda ser async pero se llame igual que
-// en script.js: db.from('posts').select(...)
-// El truco: db.from devuelve una Promise de query builder, que se puede
-// await directamente o encadenar (porque PostgREST builder es thenable).
 
 function makeDbProxy(clerk) {
   const fromFn = buildQueryClient(clerk);
@@ -272,15 +227,9 @@ function makeDbProxy(clerk) {
     get(_, prop) {
       if (prop === 'auth') return auth;
       if (prop === 'from') {
-        // Devuelve función que acepta tableName y retorna el builder
         return (tableName) => {
-          // Retornar objeto thenable que resuelve al builder real
-          // Esto permite tanto: await db.from('x').select() 
-          // como: db.from('x').select().then(...)
           let _builderPromise = fromFn(tableName);
 
-          // Proxy que intercepta todos los métodos de PostgREST
-          // y los aplica sobre la Promise del builder
           const methods = [
             'select','insert','upsert','update','delete',
             'eq','neq','gt','gte','lt','lte','like','ilike',
@@ -316,19 +265,17 @@ function makeDbProxy(clerk) {
   });
 }
 
-// ─── Bootstrap ────────────────────────────────────────────────────────────
+// Bootstrap
 (async () => {
   try {
-    // 1. Cargar Clerk SDK
+
     const { Clerk } = await import('https://esm.sh/@clerk/clerk-js@latest');
     const clerk = new Clerk(CLERK_PUBLISHABLE_KEY);
     await clerk.load();
     window._clerk = clerk;
 
-    // 2. Construir window.db con adaptador auth + cliente de datos
     window.db = makeDbProxy(clerk);
 
-    // 3. Disparar evento para que script.js arranque
     document.dispatchEvent(new Event('neon-ready'));
 
     console.log('[Sigilo] Clerk + Neon listos ✅');
