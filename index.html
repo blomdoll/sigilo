@@ -57,8 +57,7 @@
   <!-- Estilos -->
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="styles_follows.css">
-  <!-- Anuncios emergentes: estilos del popup -->
-  <link rel="stylesheet" href="styles_announce.css">
+
   <!-- Actualizaciones -->
   <link rel="stylesheet" href="styles_updates.css">
 </head>
@@ -179,13 +178,35 @@
   <!-- Notificación toast -->
   <div class="toast" id="toast"></div>
 
+  <!-- Shims para funciones usadas en onclick antes de que script.js (defer) cargue -->
+  <script>
+    function togglePw(id, btn) {
+      var inp = document.getElementById(id);
+      if (!inp) return;
+      inp.type = inp.type === 'password' ? 'text' : 'password';
+      btn.textContent = inp.type === 'password' ? '👁' : '🙈';
+    }
+    function stab(t) {
+      var lf = document.getElementById('lf'), rf = document.getElementById('rf');
+      var tl = document.getElementById('tl'), tr = document.getElementById('tr');
+      if (t === 'login') {
+        if (lf) lf.style.display = ''; if (rf) rf.style.display = 'none';
+        if (tl) tl.classList.add('on'); if (tr) tr.classList.remove('on');
+      } else {
+        if (lf) lf.style.display = 'none'; if (rf) rf.style.display = '';
+        if (tl) tl.classList.remove('on'); if (tr) tr.classList.add('on');
+      }
+    }
+    function login() { if (typeof window._sigiloLogin === 'function') window._sigiloLogin(); }
+    function register() { if (typeof window._sigiloRegister === 'function') window._sigiloRegister(); }
+  </script>
   <!-- Cliente Neon (ESM — debe cargarse primero como módulo) -->
   <script type="module" src="neon-init.js"></script>
   <!-- Script principal (espera evento neon-ready antes de ejecutar boot) -->
   <script src="script.js" defer></script>
   <script src="script_follows.js" defer></script>
   <!-- Actualizaciones -->
-  <script src="script_updates.js"></script>
+  <script src="script_updates.js" defer></script>
   <script>
     // Conectar el favicon dinámico con el sistema de temas de sigilo
     (function() {
