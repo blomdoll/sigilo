@@ -1,5 +1,5 @@
 const CLERK_PUBLISHABLE_KEY = 'pk_live_Y2xlcmsuc2lnaWxvLnNwYWNlJA';
-const DB_PROXY_URL = '/api/db';
+const DB_PROXY_URL = window.location.origin + '/api/db';
 
 // Helpers de error
 function clerkErrorMsg(e) {
