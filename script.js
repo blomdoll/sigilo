@@ -749,7 +749,6 @@ async function loadNotifs() {
   subscribeNotifs();
 }
 
-let _notifChannel = null;
 let _notifPollInterval = null;
 let _notifLastTs = null;
 
@@ -2283,6 +2282,9 @@ window.register = async function() {
   if (!validateRegister()) return;
   await _origRegister();
 };
+// Alias para shims inline definidos antes del defer
+window._sigiloLogin = window.login;
+window._sigiloRegister = window.register;
 
 // Enter para enviar formularios de auth
 document.addEventListener('DOMContentLoaded', () => {
