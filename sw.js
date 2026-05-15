@@ -4,6 +4,7 @@ const assets = [
   '/index.html',
   '/styles.css',
   '/script.js',
+  '/neon-init.js',
   '/site.webmanifest',
   '/favicon-96x96.png',
   '/apple-touch-icon.png'
