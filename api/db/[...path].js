@@ -66,8 +66,8 @@ function parsePostgrestRequest(req) {
   const url = new URL(req.url, `https://${req.headers.host}`);
 
   // La tabla viene en el path: /api/db/posts → posts
-  const pathParts = url.pathname.replace(/^\/api\/db\/?/, '').split('/');
-  const table = pathParts[0];
+  const pathParts = req.query.path || [];
+  const table = Array.isArray(pathParts) ? pathParts[0] : pathParts;
 
   if (!table || !ALLOWED_TABLES.has(table)) {
     return { error: `Tabla '${table}' no permitida.` };
