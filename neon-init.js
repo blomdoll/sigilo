@@ -20,7 +20,7 @@
  */
 
 const NEON_AUTH_URL     = 'https://ep-raspy-pond-aqbpbpf7.neonauth.c-8.us-east-1.aws.neon.tech/neondb/auth';
-const NEON_DATA_API_URL = 'NEON_DATA_API_URL_HERE'; // ← REEMPLAZA ESTO
+const NEON_DATA_API_URL = 'https://ep-raspy-pond-aqbpbpf7.c-8.us-east-1.aws.neon.tech/neondb/rest/v1'; // ← REEMPLAZA ESTO
 
 import('https://esm.sh/@neondatabase/neon-js@latest').then(({ createClient, SupabaseAuthAdapter }) => {
   const db = createClient({
