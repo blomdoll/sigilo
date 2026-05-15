@@ -1,245 +1,343 @@
 /**
  * clerk-init.js
  * ─────────────────────────────────────────────────────────────────
- * Inicialización de Sigilo con Clerk (auth) + Neon REST API (datos)
+ * Auth: Clerk JS SDK
+ * Datos: PostgREST via proxy /api/db (Neon en el servidor)
  *
- * Reemplaza completamente neon-init.js.
- * En index.html cambia:
- *   <script type="module" src="neon-init.js"></script>
- * por:
- *   <script type="module" src="clerk-init.js"></script>
+ * Expone window.db con la misma interfaz que usaba Supabase en script.js:
+ *   - db.auth.getSession / signInWithPassword / signUp / signOut / updateUser
+ *   - db.from('tabla').select / insert / upsert / update / delete + filtros
  *
- * CONFIGURACIÓN — reemplaza los valores de abajo:
- *   CLERK_PUBLISHABLE_KEY → Clerk dashboard → Configure → API Keys
- *   NEON_DATA_API_URL     → Neon Console → Data API → API URL
+ * Al terminar dispara el evento 'neon-ready' para que script.js arranque.
  * ─────────────────────────────────────────────────────────────────
  */
 
-const CLERK_PUBLISHABLE_KEY = 'pk_live_Y2xlcmsuc2lnaWxvLnNwYWNlJA';  // ← tu clave
-// El proxy /api/db reenvía las requests a Neon desde el servidor (resuelve CORS)
+const CLERK_PUBLISHABLE_KEY = 'pk_live_Y2xlcmsuc2lnaWxvLnNwYWNlJA';
 const DB_PROXY_URL = '/api/db';
 
-// ─── Cargar Clerk SDK ────────────────────────────────────────────────
-import('https://esm.sh/@clerk/clerk-js@latest').then(async ({ Clerk }) => {
-  const clerk = new Clerk(CLERK_PUBLISHABLE_KEY);
-  await clerk.load();
+// ─── Helpers de error ──────────────────────────────────────────────────────
+function clerkErrorMsg(e) {
+  if (e?.errors?.length) return e.errors[0].longMessage || e.errors[0].message;
+  return e?.message || 'Error desconocido';
+}
 
-  window._clerk = clerk;
-
-  // ─── Cliente de datos Neon (misma API que Supabase) ──────────────
-  // Usa @supabase/postgrest-js directamente para mantener la misma
-  // interfaz de `db.from('tabla').select(...)` que usa todo script.js
-  const { PostgrestClient } = await import('https://esm.sh/@supabase/postgrest-js@1');
-
-  // Función que obtiene el token JWT de Clerk para autenticar requests a Neon
-  async function getToken() {
-    try {
-      const token = await clerk.session?.getToken();
-      return token || null;
-    } catch(e) { return null; }
-  }
-
-  // Construir cliente Neon con headers dinámicos (token se refresca automáticamente)
-  function makeNeonClient() {
-    return new Proxy({}, {
-      get(_, table) {
-        if (table === 'auth') return clerkAuthAdapter(clerk);
-        if (table === 'from') return (tableName) => buildQuery(tableName);
-        if (table === 'storage') return storageAdapter();
-        return undefined;
-      }
-    });
-  }
-
-  function buildQuery(tableName) {
-    // Apunta al proxy /api/db que reenvía a Neon (sin CORS)
-    const client = new PostgrestClient(DB_PROXY_URL, {
-      fetch: async (url, opts = {}) => {
-        const token = await getToken();
-        return fetch(url, {
-          ...opts,
-          headers: {
-            ...opts.headers,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-          }
-        });
-      }
-    });
-    return client.from(tableName);
-  }
-
-  // ─── Adaptador de Auth — traduce API Supabase → Clerk ────────────
-  function clerkAuthAdapter(clerk) {
-    return {
-      // getSession() → devuelve { data: { session } }
-      async getSession() {
-        const session = clerk.session;
-        if (!session) return { data: { session: null }, error: null };
-        const user = clerk.user;
-        return {
-          data: {
-            session: {
-              user: _clerkUserToSupabase(user),
-              access_token: await session.getToken(),
-            }
-          },
-          error: null
-        };
-      },
-
-      // signInWithPassword({ email, password })
-      async signInWithPassword({ email, password }) {
-        try {
-          const signIn = await clerk.client.signIn.create({
-            identifier: email,
-            password,
-          });
-          const sessionId = signIn.createdSessionId;
-          if (signIn.status === 'complete' || signIn.status === 'needs_second_factor') {
-            if (!sessionId) return { data: null, error: { message: 'Error al iniciar sesión.' } };
-            await clerk.setActive({ session: sessionId });
-            // Esperar a que clerk.user esté disponible tras setActive
-            let user = clerk.user;
-            if (!user) { await new Promise(r => setTimeout(r, 500)); user = clerk.user; }
-            if (!user) { await clerk.load(); user = clerk.user; }
-            return { data: { user: _clerkUserToSupabase(user) }, error: null };
-          }
-          return { data: null, error: { message: 'Correo o contraseña incorrectos.' } };
-        } catch(e) {
-          return { data: null, error: { message: _clerkError(e) } };
-        }
-      },
-
-      // signUp({ email, password, options: { data: { display_name } } })
-      async signUp({ email, password, options }) {
-        try {
-          const username = options?.data?.display_name || email.split('@')[0];
-          const signUp = await clerk.client.signUp.create({
-            emailAddress: email,
-            password,
-            username,
-          });
-
-          if (signUp.status === 'complete') {
-            await clerk.setActive({ session: signUp.createdSessionId });
-            return { data: { user: _clerkUserToSupabase(clerk.user) }, error: null };
-          }
-
-          // Si necesita verificar email (Production requiere esto)
-          if (signUp.status === 'missing_requirements') {
-            try {
-              await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
-            } catch(e2) { /* ya estaba preparado */ }
-            window._pendingSignUp = signUp;
-            // Devolver user null = script.js mostrará "revisa tu correo"
-            return { data: { user: null }, error: null };
-          }
-
-          return { data: null, error: { message: 'No se pudo crear la cuenta. Intenta de nuevo.' } };
-        } catch(e) {
-          return { data: null, error: { message: _clerkError(e) } };
-        }
-      },
-
-      // signOut()
-      async signOut() {
-        try { await clerk.signOut(); } catch(e) {}
-        return { error: null };
-      },
-
-      // onAuthStateChange — no aplica en Clerk (polling/events diferente)
-      // Se deja como no-op para no romper código que lo llame
-      onAuthStateChange(cb) {
-        // Clerk notifica via __unstable__onBeforeRequest, usamos polling simple
-        return { data: { subscription: { unsubscribe: () => {} } } };
-      },
-
-      // updateUser — para cambiar display_name, bio, etc.
-      async updateUser(attrs) {
-        try {
-          if (!clerk.user) return { data: null, error: { message: 'No autenticado' } };
-          await clerk.user.update({
-            firstName: attrs.data?.display_name || undefined,
-            unsafeMetadata: {
-              ...clerk.user.unsafeMetadata,
-              ...(attrs.data || {}),
-            }
-          });
-          return { data: { user: _clerkUserToSupabase(clerk.user) }, error: null };
-        } catch(e) {
-          return { data: null, error: { message: _clerkError(e) } };
-        }
-      }
-    };
-  }
-
-  // ─── Storage adapter (avatares — no usa Supabase Storage) ────────
-  // Los avatares ya están en Cloudflare según el código existente,
-  // así que este adapter es un stub que no hace nada.
-  function storageAdapter() {
-    return {
-      from: () => ({
-        upload: async () => ({ data: null, error: { message: 'Storage no disponible' } }),
-        getPublicUrl: () => ({ data: { publicUrl: '' } }),
-      })
-    };
-  }
-
-  // ─── Convertir usuario de Clerk al formato que espera script.js ──
-  // CRÍTICO: usa external_id (= UUID original de Neon) como .id
-  // para que TODOS los datos existentes (posts, follows, likes) sigan funcionando.
-  function _clerkUserToSupabase(user) {
-    if (!user) return null;
-    const displayName = user.firstName
-      || user.unsafeMetadata?.display_name
-      || user.username
-      || user.emailAddresses?.[0]?.emailAddress?.split('@')[0]
-      || 'usuario';
-
-    return {
-      // ⚠️  CLAVE: external_id = UUID original de Neon Auth
-      // Para usuarios nuevos (registrados directo en Clerk) no habrá external_id,
-      // así que se usa el id de Clerk como fallback.
-      id: user.externalId || user.id,
-
-      email: user.emailAddresses?.[0]?.emailAddress || '',
-      user_metadata: {
-        display_name: displayName,
-        avatar_url:   user.imageUrl || null,
-        bio:          user.unsafeMetadata?.bio || '',
-        username:     user.username || displayName,
-      },
-      // Guardar el id real de Clerk por si hace falta
-      _clerk_id: user.id,
-      _external_id: user.externalId,
-    };
-  }
-
-  function _clerkError(e) {
-    if (e?.errors?.length) return e.errors[0].longMessage || e.errors[0].message;
-    return e?.message || 'Error desconocido';
-  }
-
-  // ─── Exponer window.db ────────────────────────────────────────────
-  window.db = makeNeonClient();
-
-  // ─── Disparar evento igual que antes ─────────────────────────────
-  document.dispatchEvent(new Event('neon-ready'));
-
-  console.log('[Sigilo] Clerk + Neon inicializados ✅');
-
-}).catch(err => {
-  console.error('[Sigilo] Error cargando Clerk SDK:', err);
+function showFatalError(msg, detail = '') {
   const ld = document.getElementById('loading-screen');
   if (ld) {
     ld.innerHTML = `
-      <div style="font-family:sans-serif;color:#c66;text-align:center;padding:2rem;max-width:400px">
+      <div style="font-family:sans-serif;color:#c66;text-align:center;padding:2rem;max-width:420px">
         <div style="font-size:1.8rem;margin-bottom:1rem">✦ sigilo</div>
-        <p>Error al conectar con el sistema de autenticación.<br>Revisa la configuración en <code>clerk-init.js</code>.</p>
-        <pre style="font-size:.75rem;text-align:left;background:#1a1a1a;padding:1rem;border-radius:6px;overflow:auto">${err.message}</pre>
-        <button onclick="location.reload()" style="margin-top:1rem;padding:.6rem 1.4rem;background:#c66;color:#fff;border:none;border-radius:6px;cursor:pointer">Reintentar</button>
+        <p style="margin-bottom:.5rem">${msg}</p>
+        ${detail ? `<pre style="font-size:.72rem;text-align:left;background:#1a1a1a;color:#faa;padding:1rem;border-radius:6px;overflow:auto;margin-top:.5rem">${detail}</pre>` : ''}
+        <button onclick="location.reload()" style="margin-top:1.2rem;padding:.6rem 1.4rem;background:#c66;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:.9rem">Reintentar</button>
       </div>`;
   }
-});
+}
+
+// ─── Convertir usuario Clerk → formato que espera script.js ───────────────
+// ⚠️  CLAVE: usa externalId (= UUID original de Neon/Supabase) como .id
+//     para que todos los datos existentes (posts, follows, likes) funcionen.
+//     Para usuarios nuevos que no tienen externalId, usa clerk.user.id como fallback.
+function clerkUserToSupabase(user) {
+  if (!user) return null;
+  const displayName =
+    user.firstName ||
+    user.unsafeMetadata?.display_name ||
+    user.username ||
+    user.emailAddresses?.[0]?.emailAddress?.split('@')[0] ||
+    'usuario';
+
+  return {
+    id:    user.externalId || user.id,
+    email: user.emailAddresses?.[0]?.emailAddress || '',
+    user_metadata: {
+      display_name: displayName,
+      avatar_url:   user.imageUrl || user.unsafeMetadata?.avatar_url || null,
+      bio:          user.unsafeMetadata?.bio || '',
+      username:     user.username || displayName,
+    },
+    _clerk_id:    user.id,
+    _external_id: user.externalId || null,
+  };
+}
+
+// ─── Adaptador Auth: traduce API Supabase → Clerk ─────────────────────────
+function makeAuthAdapter(clerk) {
+  return {
+
+    // Verificar sesión activa al cargar la página
+    async getSession() {
+      try {
+        await clerk.load();
+        const session = clerk.session;
+        if (!session || !clerk.user) return { data: { session: null }, error: null };
+        return {
+          data: {
+            session: {
+              user: clerkUserToSupabase(clerk.user),
+              access_token: await session.getToken(),
+            }
+          },
+          error: null,
+        };
+      } catch (e) {
+        return { data: { session: null }, error: { message: clerkErrorMsg(e) } };
+      }
+    },
+
+    // Login con email + contraseña
+    async signInWithPassword({ email, password }) {
+      try {
+        const signIn = await clerk.client.signIn.create({
+          identifier: email,
+          password,
+        });
+
+        if (signIn.status === 'complete') {
+          await clerk.setActive({ session: signIn.createdSessionId });
+
+          // Esperar a que clerk.user esté disponible después de setActive
+          let user = clerk.user;
+          for (let i = 0; i < 8 && !user; i++) {
+            await new Promise(r => setTimeout(r, 200));
+            user = clerk.user;
+          }
+
+          if (!user) return { data: null, error: { message: 'Sesión iniciada pero no se pudo cargar el usuario. Recargá la página.' } };
+          return { data: { user: clerkUserToSupabase(user) }, error: null };
+        }
+
+        // Necesita segundo factor u otro paso — raramente ocurre
+        if (signIn.status === 'needs_second_factor') {
+          return { data: null, error: { message: 'Tu cuenta requiere verificación en dos pasos. Configuralo desde Clerk.' } };
+        }
+
+        return { data: null, error: { message: 'Correo o contraseña incorrectos.' } };
+      } catch (e) {
+        const msg = clerkErrorMsg(e);
+        // Normalizar errores comunes de Clerk al español
+        if (msg.toLowerCase().includes('password') || msg.toLowerCase().includes('identifier') || msg.toLowerCase().includes('invalid')) {
+          return { data: null, error: { message: 'Correo o contraseña incorrectos.' } };
+        }
+        if (msg.toLowerCase().includes('too many') || msg.toLowerCase().includes('rate limit')) {
+          return { data: null, error: { message: 'Demasiados intentos. Esperá unos minutos.' } };
+        }
+        return { data: null, error: { message: msg } };
+      }
+    },
+
+    // Registro con email, contraseña y username
+    async signUp({ email, password, options }) {
+      try {
+        const username = options?.data?.display_name || email.split('@')[0];
+
+        const signUp = await clerk.client.signUp.create({
+          emailAddress: email,
+          password,
+          username,
+        });
+
+        // Registro completo inmediatamente (modo development sin email verification)
+        if (signUp.status === 'complete') {
+          await clerk.setActive({ session: signUp.createdSessionId });
+          let user = clerk.user;
+          for (let i = 0; i < 8 && !user; i++) {
+            await new Promise(r => setTimeout(r, 200));
+            user = clerk.user;
+          }
+          return { data: { user: user ? clerkUserToSupabase(user) : null }, error: null };
+        }
+
+        // Necesita verificar email (producción) → guardar signUp pendiente y devolver user null
+        // script.js interpreta user null como "revisa tu correo" y llama stab('login')
+        if (signUp.status === 'missing_requirements') {
+          try {
+            await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+          } catch (e2) { /* ya estaba preparado */ }
+          window._pendingSignUp = signUp;
+          return { data: { user: null }, error: null };
+        }
+
+        return { data: null, error: { message: 'No se pudo crear la cuenta. Intentá de nuevo.' } };
+      } catch (e) {
+        const msg = clerkErrorMsg(e);
+        if (msg.toLowerCase().includes('email') && (msg.toLowerCase().includes('taken') || msg.toLowerCase().includes('exist'))) {
+          return { data: null, error: { message: 'Ese correo ya tiene una cuenta.' } };
+        }
+        if (msg.toLowerCase().includes('username') && (msg.toLowerCase().includes('taken') || msg.toLowerCase().includes('exist'))) {
+          return { data: null, error: { message: 'Ese nombre de usuario ya está en uso.' } };
+        }
+        if (msg.toLowerCase().includes('password')) {
+          return { data: null, error: { message: 'La contraseña no cumple los requisitos mínimos (mín. 8 caracteres).' } };
+        }
+        return { data: null, error: { message: msg } };
+      }
+    },
+
+    // Cerrar sesión
+    async signOut() {
+      try { await clerk.signOut(); } catch (e) {}
+      return { error: null };
+    },
+
+    // Actualizar display_name y bio del usuario
+    async updateUser(attrs) {
+      try {
+        if (!clerk.user) return { data: null, error: { message: 'No autenticado' } };
+        const updates = {};
+        if (attrs.data?.display_name) updates.firstName = attrs.data.display_name;
+        // bio y avatar_url van a unsafeMetadata
+        const metaUpdates = {};
+        if (attrs.data?.display_name !== undefined) metaUpdates.display_name = attrs.data.display_name;
+        if (attrs.data?.bio          !== undefined) metaUpdates.bio          = attrs.data.bio;
+        if (attrs.data?.avatar_url   !== undefined) metaUpdates.avatar_url   = attrs.data.avatar_url;
+
+        if (Object.keys(metaUpdates).length > 0) {
+          updates.unsafeMetadata = {
+            ...clerk.user.unsafeMetadata,
+            ...metaUpdates,
+          };
+        }
+        await clerk.user.update(updates);
+        return { data: { user: clerkUserToSupabase(clerk.user) }, error: null };
+      } catch (e) {
+        return { data: null, error: { message: clerkErrorMsg(e) } };
+      }
+    },
+
+    // No-op: Clerk no usa callbacks de cambio de estado como Supabase
+    onAuthStateChange() {
+      return { data: { subscription: { unsubscribe: () => {} } } };
+    },
+  };
+}
+
+// ─── Cliente de datos: PostgREST apuntando al proxy /api/db ───────────────
+// Construye cada query con el mismo patrón de Supabase que usa script.js:
+//   db.from('posts').select('*').eq('id', 1).single()
+//
+// El proxy /api/db en Vercel recibe la request, le agrega las credenciales
+// de Neon y la reenvía — así las credenciales nunca quedan en el frontend.
+
+function buildQueryClient(clerk) {
+  // Obtener token JWT de Clerk para autorizar las requests al proxy
+  async function getToken() {
+    try {
+      return (await clerk.session?.getToken()) || null;
+    } catch (e) { return null; }
+  }
+
+  // fetch personalizado que inyecta Authorization header
+  async function authFetch(url, opts = {}) {
+    const token = await getToken();
+    return fetch(url, {
+      ...opts,
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        ...(opts.headers || {}),
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      },
+    });
+  }
+
+  // Importar PostgREST client (misma interfaz que Supabase para queries)
+  // Se importa dinámicamente para no bloquear si falla
+  let _pgClient = null;
+  async function getPgClient() {
+    if (_pgClient) return _pgClient;
+    const { PostgrestClient } = await import('https://esm.sh/@supabase/postgrest-js@1');
+    _pgClient = new PostgrestClient(DB_PROXY_URL, { fetch: authFetch });
+    return _pgClient;
+  }
+
+  // Devuelve db.from('tabla') — igual que Supabase
+  return async function from(tableName) {
+    const client = await getPgClient();
+    return client.from(tableName);
+  };
+}
+
+// ─── Objeto db completo que se expone como window.db ──────────────────────
+// Usa un Proxy para que db.from() pueda ser async pero se llame igual que
+// en script.js: db.from('posts').select(...)
+// El truco: db.from devuelve una Promise de query builder, que se puede
+// await directamente o encadenar (porque PostgREST builder es thenable).
+
+function makeDbProxy(clerk) {
+  const fromFn = buildQueryClient(clerk);
+  const auth   = makeAuthAdapter(clerk);
+
+  return new Proxy({}, {
+    get(_, prop) {
+      if (prop === 'auth') return auth;
+      if (prop === 'from') {
+        // Devuelve función que acepta tableName y retorna el builder
+        return (tableName) => {
+          // Retornar objeto thenable que resuelve al builder real
+          // Esto permite tanto: await db.from('x').select() 
+          // como: db.from('x').select().then(...)
+          let _builderPromise = fromFn(tableName);
+
+          // Proxy que intercepta todos los métodos de PostgREST
+          // y los aplica sobre la Promise del builder
+          const methods = [
+            'select','insert','upsert','update','delete',
+            'eq','neq','gt','gte','lt','lte','like','ilike',
+            'in','is','not','or','and','filter',
+            'order','limit','range','single','maybeSingle',
+            'returns','throwOnError',
+          ];
+
+          function makeChain(builderPromise) {
+            const chain = {};
+            methods.forEach(method => {
+              chain[method] = (...args) => {
+                const next = builderPromise.then(b => {
+                  if (typeof b[method] !== 'function') {
+                    throw new Error(`[db proxy] método '${method}' no existe en el builder`);
+                  }
+                  return b[method](...args);
+                });
+                return makeChain(next);
+              };
+            });
+            // Hacer la cadena thenable para que await funcione al final
+            chain.then = (res, rej) => builderPromise.then(b => b, rej).then(res, rej);
+            chain.catch = (rej) => builderPromise.catch(rej);
+            return chain;
+          }
+
+          return makeChain(_builderPromise);
+        };
+      }
+      return undefined;
+    }
+  });
+}
+
+// ─── Bootstrap ────────────────────────────────────────────────────────────
+(async () => {
+  try {
+    // 1. Cargar Clerk SDK
+    const { Clerk } = await import('https://esm.sh/@clerk/clerk-js@latest');
+    const clerk = new Clerk(CLERK_PUBLISHABLE_KEY);
+    await clerk.load();
+    window._clerk = clerk;
+
+    // 2. Construir window.db con adaptador auth + cliente de datos
+    window.db = makeDbProxy(clerk);
+
+    // 3. Disparar evento para que script.js arranque
+    document.dispatchEvent(new Event('neon-ready'));
+
+    console.log('[Sigilo] Clerk + Neon listos ✅');
+
+  } catch (err) {
+    console.error('[Sigilo] Error al inicializar:', err);
+    showFatalError(
+      'Error al conectar con el sistema de autenticación.',
+      err.message
+    );
+  }
+})();
