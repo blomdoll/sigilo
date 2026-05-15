@@ -242,12 +242,25 @@ function stab(tab) {
 async function login() {
   const email = document.getElementById('lu').value.trim();
   const password = document.getElementById('lp').value;
+  const errEl = document.getElementById('le');
+  errEl.textContent = '';
   const btn = document.querySelector('#lf .btn-fill');
   if (btn) { btn.textContent = 'ingresando...'; btn.disabled = true; }
   const { data, error } = await db.auth.signInWithPassword({ email, password });
   if (btn) { btn.textContent = 'Ingresar'; btn.disabled = false; }
-  if (error) document.getElementById('le').textContent = 'Error: ' + error.message;
-  else { S.me = data.user; boot(); }
+  if (error) {
+    const msg = error.message || '';
+    if (msg.includes('password') || msg.includes('identifier') || msg.includes('Invalid')) {
+      errEl.textContent = 'Correo o contraseña incorrectos.';
+    } else if (msg.includes('too many')) {
+      errEl.textContent = 'Demasiados intentos. Espera unos minutos.';
+    } else {
+      errEl.textContent = msg;
+    }
+  } else {
+    S.me = data.user;
+    boot();
+  }
 }
 
 async function register() {
@@ -258,10 +271,11 @@ async function register() {
   errEl.textContent = '';
 
   if (!username) { errEl.textContent = 'El nombre de usuario es obligatorio.'; return; }
-  if (username.length < 3) { errEl.textContent = 'El nombre de usuario debe tener al menos 3 caracteres.'; return; }
+  if (username.length < 4) { errEl.textContent = 'El nombre de usuario debe tener al menos 4 caracteres.'; return; }
+  if (!/^[a-zA-Z0-9_]+$/.test(username)) { errEl.textContent = 'Solo letras, números y guión bajo.'; return; }
   if (!email) { errEl.textContent = 'El correo electrónico es obligatorio.'; return; }
   if (!password) { errEl.textContent = 'La contraseña es obligatoria.'; return; }
-  if (password.length < 6) { errEl.textContent = 'La contraseña debe tener al menos 6 caracteres.'; return; }
+  if (password.length < 8) { errEl.textContent = 'La contraseña debe tener al menos 8 caracteres.'; return; }
 
   const btn = document.querySelector('#rf .btn-fill');
   if (btn) { btn.textContent = 'verificando...'; btn.disabled = true; }
@@ -280,8 +294,19 @@ async function register() {
   if (btn) { btn.textContent = 'creando cuenta...'; }
   const { data, error } = await db.auth.signUp({ email, password, options: { data: { display_name: username } } });
   if (btn) { btn.textContent = 'Crear cuenta'; btn.disabled = false; }
-  if (error) { errEl.textContent = error.message; return; }
-  // Crear fila en profiles para que el usuario sea buscable desde el primer momento
+  if (error) {
+    const msg = error.message || '';
+    if (msg.includes('email') && msg.includes('taken')) {
+      errEl.textContent = 'Ese correo ya tiene una cuenta.';
+    } else if (msg.includes('username') && msg.includes('taken')) {
+      errEl.textContent = 'Ese nombre de usuario ya está en uso.';
+    } else if (msg.includes('password')) {
+      errEl.textContent = 'La contraseña no cumple los requisitos mínimos.';
+    } else {
+      errEl.textContent = msg;
+    }
+    return;
+  }
   if (data.user) {
     try {
       await db.from('profiles').upsert([{
@@ -295,7 +320,6 @@ async function register() {
     S.me = data.user;
     boot();
   } else {
-    // Supabase devuelve user=null cuando la confirmación de correo está activa
     toast('¡Cuenta creada! Revisa tu correo para confirmar y luego inicia sesión.');
     stab('login');
   }
