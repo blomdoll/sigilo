@@ -251,8 +251,14 @@ function makeDbProxy(clerk) {
                 return makeChain(next);
               };
             });
-            // Hacer la cadena thenable para que await funcione al final
-            chain.then = (res, rej) => builderPromise.then(b => b, rej).then(res, rej);
+            // Ejecutar la query: el FilterBuilder de PostgREST es thenable,
+            // hay que llamar su .then() directamente para que dispare el fetch.
+            chain.then = (res, rej) => builderPromise.then(b => {
+              // Si el builder resuelto es thenable (tiene su propio .then), ejecutarlo
+              if (b && typeof b.then === 'function') return b.then(res, rej);
+              // Si ya es un resultado plano {data, error}, pasarlo directo
+              return Promise.resolve(b).then(res, rej);
+            }, rej);
             chain.catch = (rej) => builderPromise.catch(rej);
             return chain;
           }
