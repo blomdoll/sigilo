@@ -1,10 +1,10 @@
-const CACHE_NAME = 'sigilo-v3';
+const CACHE_NAME = 'sigilo-v4';
 const assets = [
   '/',
   '/index.html',
   '/styles.css',
   '/script.js',
-  '/neon-init.js',
+  '/clerk-init.js',
   '/site.webmanifest',
   '/favicon-96x96.png',
   '/apple-touch-icon.png'
@@ -36,6 +36,9 @@ self.addEventListener('fetch', event => {
 
   // No interceptar peticiones a APIs externas (Supabase, CDNs de fuentes, etc.)
   if (url.origin !== self.location.origin) return;
+
+  // No interceptar llamadas al proxy de base de datos — siempre van a la red
+  if (url.pathname.startsWith('/api/')) return;
 
   const isDocument = req.destination === 'document';
   const isScript   = req.destination === 'script';
