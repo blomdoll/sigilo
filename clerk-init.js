@@ -90,6 +90,10 @@ function makeAuthAdapter(clerk) {
           return { data: { user: clerkUserToSupabase(user) }, error: null };
         }
 
+        if (result.status === 'needs_second_factor') {
+          return { data: null, error: { message: 'Esta cuenta requiere verificación en dos pasos.' } };
+        }
+
         return { data: null, error: { message: 'Correo o contraseña incorrectos.' } };
       } catch (e) {
         const msg = clerkErrorMsg(e);
@@ -129,7 +133,8 @@ function makeAuthAdapter(clerk) {
             await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
           } catch (e2) { /* ya estaba preparado */ }
           window._pendingSignUp = signUp;
-          return { data: { user: null }, error: null };
+          // Retornar un indicador especial para que script.js muestre el mensaje correcto
+          return { data: { user: null, needsVerification: true }, error: null };
         }
 
         return { data: null, error: { message: 'No se pudo crear la cuenta. Intentá de nuevo.' } };
@@ -173,6 +178,8 @@ function makeAuthAdapter(clerk) {
           };
         }
         await clerk.user.update(updates);
+        // Recargar el usuario para reflejar los cambios
+        await clerk.user.reload().catch(() => {});
         return { data: { user: clerkUserToSupabase(clerk.user) }, error: null };
       } catch (e) {
         return { data: null, error: { message: clerkErrorMsg(e) } };
@@ -211,9 +218,13 @@ function buildQueryClient(clerk) {
   let _pgClient = null;
   async function getPgClient() {
     if (_pgClient) return _pgClient;
-    // v2 tiene ilike, cs, filter y todos los métodos que usa script.js
-    const { PostgrestClient } = await import('https://esm.sh/@supabase/postgrest-js@2');
-    _pgClient = new PostgrestClient(`${SUPABASE_URL}/rest/v1`, { fetch: authFetch });
+    try {
+      // v2 tiene ilike, cs, filter y todos los métodos que usa script.js
+      const { PostgrestClient } = await import('https://esm.sh/@supabase/postgrest-js@2');
+      _pgClient = new PostgrestClient(`${SUPABASE_URL}/rest/v1`, { fetch: authFetch });
+    } catch(e) {
+      throw new Error('[Sigilo] No se pudo cargar postgrest-js: ' + e.message);
+    }
     return _pgClient;
   }
 
