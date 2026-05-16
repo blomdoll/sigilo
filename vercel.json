@@ -1,13 +1,8 @@
 {
   "functions": {
-    "api/db.js": {
+    "api/db/[...path].js": {
+      "memory": 256,
       "maxDuration": 10
     }
-  },
-  "rewrites": [
-    {
-      "source": "/api/db/(.*)",
-      "destination": "/api/db"
-    }
-  ]
+  }
 }
