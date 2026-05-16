@@ -211,7 +211,8 @@ function buildQueryClient(clerk) {
   let _pgClient = null;
   async function getPgClient() {
     if (_pgClient) return _pgClient;
-    const { PostgrestClient } = await import('https://esm.sh/@supabase/postgrest-js@1');
+    // v2 tiene ilike, cs, filter y todos los métodos que usa script.js
+    const { PostgrestClient } = await import('https://esm.sh/@supabase/postgrest-js@2');
     _pgClient = new PostgrestClient(`${SUPABASE_URL}/rest/v1`, { fetch: authFetch });
     return _pgClient;
   }
@@ -226,52 +227,41 @@ function makeDbProxy(clerk) {
   const fromFn = buildQueryClient(clerk);
   const auth   = makeAuthAdapter(clerk);
 
-  return new Proxy({}, {
-    get(_, prop) {
-      if (prop === 'auth') return auth;
-      if (prop === 'from') {
-        return (tableName) => {
-          let _builderPromise = fromFn(tableName);
+  return {
+    auth,
+    from(tableName) {
+      // Retorna una Promise que resuelve al builder de postgrest-js v2.
+      // El builder ya es thenable y tiene todos los métodos encadenables nativamente.
+      // Usamos un Proxy para que cualquier método llamado antes de que resuelva
+      // se encadene correctamente sobre la Promise.
+      const builderPromise = fromFn(tableName);
 
-          const methods = [
-            'select','insert','upsert','update','delete',
-            'eq','neq','gt','gte','lt','lte','like','ilike',
-            'in','is','not','or','and','filter',
-            'order','limit','range','single','maybeSingle',
-            'returns','throwOnError',
-          ];
-
-          function makeChain(builderPromise) {
-            const chain = {};
-            methods.forEach(method => {
-              chain[method] = (...args) => {
-                const next = builderPromise.then(b => {
-                  if (typeof b[method] !== 'function') {
-                    throw new Error(`[db proxy] método '${method}' no existe en el builder`);
-                  }
-                  return b[method](...args);
-                });
-                return makeChain(next);
-              };
-            });
-            // Ejecutar la query: el FilterBuilder de PostgREST es thenable,
-            // hay que llamar su .then() directamente para que dispare el fetch.
-            chain.then = (res, rej) => builderPromise.then(b => {
-              // Si el builder resuelto es thenable (tiene su propio .then), ejecutarlo
-              if (b && typeof b.then === 'function') return b.then(res, rej);
-              // Si ya es un resultado plano {data, error}, pasarlo directo
-              return Promise.resolve(b).then(res, rej);
-            }, rej);
-            chain.catch = (rej) => builderPromise.catch(rej);
-            return chain;
+      function makeChain(promise) {
+        return new Proxy(promise, {
+          get(target, prop) {
+            // Permitir .then y .catch para que sea awaitable
+            if (prop === 'then') return target.then.bind(target);
+            if (prop === 'catch') return target.catch.bind(target);
+            if (prop === 'finally') return target.finally.bind(target);
+            // Cualquier otro método: encadenar sobre el builder resuelto
+            return (...args) => makeChain(
+              target.then(b => {
+                if (typeof b[prop] !== 'function') {
+                  throw new Error(`[db proxy] método '${String(prop)}' no existe en el builder`);
+                }
+                const result = b[prop](...args);
+                // Si el resultado es thenable (otro builder), devolverlo directo
+                // para que el siguiente encadenamiento funcione
+                return result;
+              })
+            );
           }
-
-          return makeChain(_builderPromise);
-        };
+        });
       }
-      return undefined;
+
+      return makeChain(builderPromise);
     }
-  });
+  };
 }
 
 // Bootstrap
