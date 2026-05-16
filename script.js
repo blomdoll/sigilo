@@ -271,7 +271,7 @@ async function register() {
   errEl.textContent = '';
 
   if (!username) { errEl.textContent = 'El nombre de usuario es obligatorio.'; return; }
-  if (username.length < 4) { errEl.textContent = 'El nombre de usuario debe tener al menos 4 caracteres.'; return; }
+  if (username.length < 3) { errEl.textContent = 'El nombre de usuario debe tener al menos 3 caracteres.'; return; }
   if (!/^[a-zA-Z0-9_]+$/.test(username)) { errEl.textContent = 'Solo letras, números y guión bajo.'; return; }
   if (!email) { errEl.textContent = 'El correo electrónico es obligatorio.'; return; }
   if (!password) { errEl.textContent = 'La contraseña es obligatoria.'; return; }
@@ -280,10 +280,10 @@ async function register() {
   const btn = document.querySelector('#rf .btn-fill');
   if (btn) { btn.textContent = 'verificando...'; btn.disabled = true; }
 
-  // Verificar que el username no esté en uso
+  // Verificar que el username no esté en uso (comparación case-insensitive manual)
   const { data: existingUser } = await db.from('profiles')
     .select('id')
-    .ilike('username', username)
+    .eq('username', username.toLowerCase())
     .maybeSingle();
   if (existingUser) {
     errEl.textContent = 'Ese nombre de usuario ya está en uso. Elige otro.';
@@ -311,7 +311,7 @@ async function register() {
     try {
       await db.from('profiles').upsert([{
         id: data.user.id,
-        username,
+        username: username.toLowerCase(),
         display_name: username,
         avatar_url: null,
         bio: '',
@@ -319,7 +319,12 @@ async function register() {
     } catch(e) { /* no bloquear el registro si falla */ }
     S.me = data.user;
     boot();
+  } else if (data.needsVerification) {
+    if (btn) { btn.textContent = 'Crear cuenta'; btn.disabled = false; }
+    toast('¡Cuenta creada! Revisa tu correo electrónico para confirmar tu cuenta y luego inicia sesión.');
+    stab('login');
   } else {
+    if (btn) { btn.textContent = 'Crear cuenta'; btn.disabled = false; }
     toast('¡Cuenta creada! Revisa tu correo para confirmar y luego inicia sesión.');
     stab('login');
   }
@@ -369,7 +374,7 @@ async function boot() {
   refreshMyAvatarUrl();
 
   // Sincronizar bio desde profiles al arranque (fuente de verdad)
-  if (!S.me.user_metadata?.bio) {
+  if (S.me && !S.me.user_metadata?.bio) {
     db.from('profiles').select('bio').eq('id', S.me.id).single().then(({ data }) => {
       if (data?.bio) {
         S._profileBio = data.bio;
@@ -680,11 +685,14 @@ async function logout() {
   unsubscribeNotifs();
   if (_tsInterval) { clearInterval(_tsInterval); _tsInterval = null; }
   if (_sentinel) { _sentinel.disconnect(); _sentinel = null; }
-  await db.auth.signOut();
+  try { await db.auth.signOut(); } catch(e) {}
   S.me = null; S.notifs = []; S.notifOpen = false;
-  document.getElementById('app').style.display = 'none';
-  document.getElementById('auth').style.display = 'flex';
-  document.getElementById('lu').value = ''; document.getElementById('lp').value = '';
+  const appEl = document.getElementById('app');
+  const authEl = document.getElementById('auth');
+  if (appEl) appEl.style.display = 'none';
+  if (authEl) authEl.style.display = 'flex';
+  const luEl = document.getElementById('lu'); if (luEl) luEl.value = '';
+  const lpEl = document.getElementById('lp'); if (lpEl) lpEl.value = '';
   stab('login');
   // Limpiar historial para que atrás no vuelva a una página protegida
   try { history.replaceState(null, '', window.location.pathname); } catch(e) {}
@@ -897,13 +905,19 @@ function renderNotifPanel() {
 }
 
 function clearNotifs() {
-  db.from('notifications').delete().eq('to_uid', S.me.id).then(() => {});
+  if (S.me) db.from('notifications').delete().eq('to_uid', S.me.id).then(() => {}).catch(() => {});
   S.notifs=[]; renderNotifBadge(); renderNotifPanel();
 }
 
 function goNotif(postId) {
   S.notifOpen = false; renderNotifPanel();
-  gofeed();
+  // Decidir a qué sección navegar según si el post es de comunidad o feed
+  const p = findPost(isNaN(postId)?postId:Number(postId));
+  if (p && p.is_community) {
+    goCommunity();
+  } else {
+    gofeed();
+  }
   setTimeout(() => {
     const el = document.getElementById('post-' + safeId(postId));
     if (el) { el.scrollIntoView({ behavior:'smooth', block:'center' }); el.classList.add('highlight'); setTimeout(()=>el.classList.remove('highlight'),1800); }
@@ -1163,7 +1177,7 @@ async function postCommunity() {
   const txt = ta.value.trim();
   if (!txt) return toast('escribe algo primero');
   if (txt.length > MAX_CHARS) return toast('máximo ' + MAX_CHARS + ' caracteres');
-  const btn = document.querySelector('.pbtn');
+  const btn = document.querySelector('.ccard .pbtn, #ct-comm ~ * .pbtn') || document.querySelector('.pbtn');
   if (btn) { btn.textContent = 'publicando...'; btn.disabled = true; }
   const { data, error } = await db.from('posts').insert([{
     body: txt,
@@ -1189,7 +1203,7 @@ async function postCommunity() {
     const ta = document.getElementById('ct-comm');
     if (ta) ta.value = '';
     const cc = document.getElementById('cc-comm');
-    if (cc) cc.textContent = '0/' + MAX_CHARS;
+    if (cc) cc.textContent = String(MAX_CHARS);
     const first = document.querySelector('.pcard');
     if (first) { first.classList.add('new-post'); setTimeout(() => first.classList.remove('new-post'), 400); }
   }, 30);
@@ -2107,8 +2121,6 @@ async function scmt(id) {
     const csec = card?.querySelector('.csec');
     if (csec) {
       // Añadir el nuevo comentario al DOM usando renderComment
-      const cmDiv = document.createElement('div');
-      cmDiv.outerHTML; // just to force parse
       const tmp = document.createElement('template');
       tmp.innerHTML = renderComment(nuevoComentario, id, cid);
       const newNode = tmp.content.firstElementChild;
@@ -2564,6 +2576,7 @@ async function tlikeCmt(postId, cmtId) {
 }
 
 // --- COPY con feedback visual ---
+// La versión extendida añade animación visual al botón
 const _origCopyPost = copyPost;
 window.copyPost = function(id) {
   const doFeedback = () => {
