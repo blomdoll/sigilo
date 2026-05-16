@@ -1,5 +1,7 @@
 const CLERK_PUBLISHABLE_KEY = 'pk_live_Y2xlcmsuc2lnaWxvLnNwYWNlJA';
-const DB_PROXY_URL = window.location.origin + '/api/db';
+
+const SUPABASE_URL      = 'https://trkfwxxxeethqnqedxfk.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRya2Z3eHh4ZWV0aHFucWVkeGZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NTA0MTQsImV4cCI6MjA5NDUyNjQxNH0._gxl70CEc3MNVEZVOAX5jQDrvJAuFINHYhPa7Gtbstw';
 
 // Helpers de error
 function clerkErrorMsg(e) {
@@ -191,7 +193,7 @@ function buildQueryClient(clerk) {
     } catch (e) { return null; }
   }
 
-  // fetch personalizado que inyecta Authorization header
+  // fetch personalizado que inyecta los headers requeridos por Supabase REST
   async function authFetch(url, opts = {}) {
     const token = await getToken();
     return fetch(url, {
@@ -200,7 +202,8 @@ function buildQueryClient(clerk) {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
         ...(opts.headers || {}),
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': token ? `Bearer ${token}` : `Bearer ${SUPABASE_ANON_KEY}`,
       },
     });
   }
@@ -209,7 +212,7 @@ function buildQueryClient(clerk) {
   async function getPgClient() {
     if (_pgClient) return _pgClient;
     const { PostgrestClient } = await import('https://esm.sh/@supabase/postgrest-js@1');
-    _pgClient = new PostgrestClient(DB_PROXY_URL, { fetch: authFetch });
+    _pgClient = new PostgrestClient(`${SUPABASE_URL}/rest/v1`, { fetch: authFetch });
     return _pgClient;
   }
 
@@ -284,7 +287,7 @@ function makeDbProxy(clerk) {
 
     document.dispatchEvent(new Event('neon-ready'));
 
-    console.log('[Sigilo] Clerk + Neon listos ✅');
+    console.log('[Sigilo] Clerk + Supabase listos ✅');
 
   } catch (err) {
     console.error('[Sigilo] Error al inicializar:', err);
