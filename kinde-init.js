@@ -169,7 +169,7 @@ function makeDbProxy(kinde) {
     // Cargar el SDK de Kinde como script UMD (más compatible con browsers)
     await new Promise((resolve, reject) => {
       const s = document.createElement('script');
-      s.src = 'https://unpkg.com/@kinde-oss/kinde-auth-pkce-js/dist/kinde-auth-pkce-js.umd.js';
+      s.src = '/kinde-auth-pkce-js.umd.min.js';
       s.onload = resolve;
       s.onerror = () => reject(new Error('No se pudo cargar el SDK de Kinde desde el CDN.'));
       document.head.appendChild(s);
