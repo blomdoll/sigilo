@@ -8,6 +8,7 @@ const assets = [
   '/site.webmanifest',
   '/favicon-96x96.png',
   '/apple-touch-icon.png'
+  '/kinde-auth-pkce-js.umd.min.js'
 ];
 
 // Al instalar: llenar caché nueva y activar inmediatamente
