@@ -3,11 +3,9 @@ const KINDE_CLIENT_ID   = '868889eecb5d4b71bc630f2798cf5d0e';               // S
 
 const SUPABASE_URL      = 'https://trkfwxxxeethqnqedxfk.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRya2Z3eHh4ZWV0aHFucWVkeGZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NTA0MTQsImV4cCI6MjA5NDUyNjQxNH0._gxl70CEc3MNVEZVOAX5jQDrvJAuFINHYhPa7Gtbstw';
-
+ 
 // ──────────────────────────────────────────────────────────────
-//  Helpers
-// ──────────────────────────────────────────────────────────────
-
+ 
 function showFatalError(msg, detail = '') {
   const ld = document.getElementById('loading-screen');
   if (ld) {
@@ -20,7 +18,7 @@ function showFatalError(msg, detail = '') {
       </div>`;
   }
 }
-
+ 
 function kindeUserToSupabase(user) {
   if (!user) return null;
   const displayName =
@@ -29,7 +27,7 @@ function kindeUserToSupabase(user) {
     user.name ||
     user.email?.split('@')[0] ||
     'usuario';
-
+ 
   return {
     id:    user.id,
     email: user.email || '',
@@ -42,22 +40,15 @@ function kindeUserToSupabase(user) {
     _kinde_id: user.id,
   };
 }
-
-// ──────────────────────────────────────────────────────────────
-//  Kinde PKCE SPA client
-//  Usamos el SDK oficial de Kinde para SPAs (sin backend)
-// ──────────────────────────────────────────────────────────────
-
+ 
 function makeAuthAdapter(kinde) {
-
+ 
   async function getSession() {
     try {
       const isAuth = await kinde.isAuthenticated();
       if (!isAuth) return { data: { session: null }, error: null };
-
       const user  = await kinde.getUser();
       const token = await kinde.getToken();
-
       return {
         data: {
           session: {
@@ -71,21 +62,17 @@ function makeAuthAdapter(kinde) {
       return { data: { session: null }, error: { message: e.message } };
     }
   }
-
-  // Kinde SPA usa redirección para login/register — igual que Supabase Auth.
-  // Abrimos el popup de login en la misma pestaña (redirect flow).
+ 
   async function signInWithPassword({ email }) {
     try {
-      // Guardamos el email para pre-rellenarlo si el proveedor lo permite
       if (email) sessionStorage.setItem('sigilo_login_hint', email);
       await kinde.login({ login_hint: email });
-      // El control pasa a Kinde; cuando regrese, getSession() tendrá la sesión.
       return { data: null, error: null };
     } catch (e) {
       return { data: null, error: { message: e.message || 'Error al iniciar sesión.' } };
     }
   }
-
+ 
   async function signUp({ email }) {
     try {
       await kinde.register({ login_hint: email });
@@ -94,34 +81,25 @@ function makeAuthAdapter(kinde) {
       return { data: null, error: { message: e.message || 'Error al registrarse.' } };
     }
   }
-
+ 
   async function signOut() {
     try { await kinde.logout(); } catch (e) {}
     return { error: null };
   }
-
-  // updateUser: Kinde no permite editar el perfil desde el cliente SPA
-  // directamente, así que guardamos display_name/bio en la tabla profiles
-  // de Supabase (igual que hacía la app antes con unsafeMetadata).
-  async function updateUser(attrs) {
-    // La app guarda display_name, bio y avatar_url en la tabla `profiles`
-    // de Supabase — ese flujo no cambia nada, lo sigue manejando script.js.
+ 
+  async function updateUser() {
     return { data: { user: null }, error: null };
   }
-
+ 
   function onAuthStateChange() {
     return { data: { subscription: { unsubscribe: () => {} } } };
   }
-
+ 
   return { getSession, signInWithPassword, signUp, signOut, updateUser, onAuthStateChange };
 }
-
-// ──────────────────────────────────────────────────────────────
-//  Query client (Supabase REST via postgrest-js) — sin cambios
-// ──────────────────────────────────────────────────────────────
-
+ 
 function buildQueryClient(getTokenFn) {
-
+ 
   async function authFetch(url, opts = {}) {
     const token = await getTokenFn();
     return fetch(url, {
@@ -135,7 +113,7 @@ function buildQueryClient(getTokenFn) {
       },
     });
   }
-
+ 
   let _pgClient = null;
   async function getPgClient() {
     if (_pgClient) return _pgClient;
@@ -143,22 +121,22 @@ function buildQueryClient(getTokenFn) {
     _pgClient = new PostgrestClient(`${SUPABASE_URL}/rest/v1`, { fetch: authFetch });
     return _pgClient;
   }
-
+ 
   return async function from(tableName) {
     const client = await getPgClient();
     return client.from(tableName);
   };
 }
-
+ 
 function makeDbProxy(kinde) {
   const fromFn = buildQueryClient(() => kinde.getToken().catch(() => null));
   const auth   = makeAuthAdapter(kinde);
-
+ 
   return {
     auth,
     from(tableName) {
       const builderPromise = fromFn(tableName);
-
+ 
       function makeChain(promise) {
         return new Proxy(promise, {
           get(target, prop) {
@@ -176,42 +154,62 @@ function makeDbProxy(kinde) {
           }
         });
       }
-
+ 
       return makeChain(builderPromise);
     }
   };
 }
-
+ 
 // ──────────────────────────────────────────────────────────────
-//  Bootstrap
+//  Bootstrap — carga el SDK de Kinde via script tag (UMD)
 // ──────────────────────────────────────────────────────────────
-
+ 
 (async () => {
   try {
-    const { createKindeClient } = await import('https://esm.sh/@kinde-oss/kinde-auth-pkce-js');
-
-    const kinde = await createKindeClient({
-      client_id:     KINDE_CLIENT_ID,
-      domain:        KINDE_DOMAIN,
-      redirect_uri:  window.location.origin,
-      logout_uri:    window.location.origin,
-      scope:         'openid profile email',
+    // Cargar el SDK de Kinde como script UMD (más compatible con browsers)
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/@kinde-oss/kinde-auth-pkce-js/dist/kinde-auth-pkce-js.umd.js';
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('No se pudo cargar el SDK de Kinde desde el CDN.'));
+      document.head.appendChild(s);
     });
-
-    // Manejar el callback de Kinde (cuando regresa de /login o /register)
-    // Kinde PKCE necesita procesar el code de la URL al volver
+ 
+    // El UMD expone la función en window — probamos los nombres posibles
+    const createKindeClient =
+      window.createKindeClient ||
+      window.KindeAuth?.createKindeClient ||
+      window['kinde-auth-pkce-js']?.createKindeClient;
+ 
+    if (typeof createKindeClient !== 'function') {
+      // Fallback: intentar con el nombre del objeto exportado
+      const allKeys = Object.keys(window).filter(k => k.toLowerCase().includes('kinde'));
+      throw new Error(
+        'createKindeClient no encontrado. Claves de Kinde en window: ' +
+        (allKeys.join(', ') || 'ninguna')
+      );
+    }
+ 
+    const kinde = await createKindeClient({
+      client_id:    KINDE_CLIENT_ID,
+      domain:       KINDE_DOMAIN,
+      redirect_uri: window.location.origin,
+      logout_uri:   window.location.origin,
+      scope:        'openid profile email',
+    });
+ 
+    // Procesar callback de Kinde al volver del login/register
     if (window.location.search.includes('code=')) {
       await kinde.handleRedirectCallback();
-      // Limpiar la URL sin recargar la página
       window.history.replaceState({}, document.title, window.location.pathname);
     }
-
+ 
     window._kinde = kinde;
     window.db = makeDbProxy(kinde);
-
+ 
     document.dispatchEvent(new Event('neon-ready'));
     console.log('[Sigilo] Kinde + Supabase listos ✅');
-
+ 
   } catch (err) {
     console.error('[Sigilo] Error al inicializar:', err);
     showFatalError(
@@ -220,3 +218,4 @@ function makeDbProxy(kinde) {
     );
   }
 })();
+ 
