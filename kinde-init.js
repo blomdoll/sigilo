@@ -98,11 +98,13 @@ function makeAuthAdapter(kinde) {
   return { getSession, signInWithPassword, signUp, signOut, updateUser, onAuthStateChange };
 }
  
-function buildQueryClient(getTokenFn) {
- 
+function makeDbProxy(kinde) {
+  const auth = makeAuthAdapter(kinde);
+
+  // Cache del PostgrestClient — se inicializa una sola vez
+  let _pgClient = null;
+
   async function authFetch(url, opts = {}) {
-    // Supabase no puede verificar JWTs de Kinde sin Third Party Auth configurado.
-    // Usamos el anon key para todas las queries; el control de acceso lo maneja la app.
     return fetch(url, {
       ...opts,
       headers: {
@@ -114,48 +116,51 @@ function buildQueryClient(getTokenFn) {
       },
     });
   }
- 
-  let _pgClient = null;
+
   async function getPgClient() {
     if (_pgClient) return _pgClient;
     const { PostgrestClient } = await import('https://esm.sh/@supabase/postgrest-js@2');
     _pgClient = new PostgrestClient(`${SUPABASE_URL}/rest/v1`, { fetch: authFetch });
     return _pgClient;
   }
- 
-  return async function from(tableName) {
-    const client = await getPgClient();
-    return client.from(tableName);
-  };
-}
- 
-function makeDbProxy(kinde) {
-  const fromFn = buildQueryClient(() => kinde.getToken().catch(() => null));
-  const auth   = makeAuthAdapter(kinde);
- 
+
+  // Devuelve un proxy que acumula llamadas de métodos y las ejecuta
+  // en cuanto el builder asíncrono esté disponible.
+  function makeChain(builderPromise) {
+    // Cola de operaciones pendientes: [{method, args}]
+    const ops = [];
+
+    const proxy = new Proxy({}, {
+      get(_, prop) {
+        // Cuando se hace "await" o ".then()" → ejecutar toda la cadena
+        if (prop === 'then' || prop === 'catch' || prop === 'finally') {
+          const resultPromise = builderPromise.then(async client => {
+            let b = client;
+            for (const { method, args } of ops) {
+              if (typeof b[method] !== 'function') {
+                throw new Error(`[db proxy] método '${method}' no existe en el builder`);
+              }
+              b = b[method](...args);
+            }
+            return b;
+          });
+          return resultPromise[prop].bind(resultPromise);
+        }
+        // Acumular métodos en la cadena
+        return (...args) => {
+          ops.push({ method: prop, args });
+          return proxy;
+        };
+      }
+    });
+
+    return proxy;
+  }
+
   return {
     auth,
     from(tableName) {
-      const builderPromise = fromFn(tableName);
- 
-      function makeChain(promise) {
-        return new Proxy(promise, {
-          get(target, prop) {
-            if (prop === 'then')    return target.then.bind(target);
-            if (prop === 'catch')   return target.catch.bind(target);
-            if (prop === 'finally') return target.finally.bind(target);
-            return (...args) => makeChain(
-              target.then(b => {
-                if (typeof b[prop] !== 'function') {
-                  throw new Error(`[db proxy] método '${String(prop)}' no existe en el builder`);
-                }
-                return b[prop](...args);
-              })
-            );
-          }
-        });
-      }
- 
+      const builderPromise = getPgClient().then(client => client.from(tableName));
       return makeChain(builderPromise);
     }
   };
