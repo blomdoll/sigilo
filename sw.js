@@ -1,10 +1,10 @@
-const CACHE_NAME = 'sigilo-v5';
+const CACHE_NAME = 'sigilo-v6'; 
 const assets = [
   '/',
   '/index.html',
   '/styles.css',
   '/script.js',
-  '/clerk-init.js',
+  '/kinde-init.js',
   '/site.webmanifest',
   '/favicon-96x96.png',
   '/apple-touch-icon.png'
