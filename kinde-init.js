@@ -101,7 +101,8 @@ function makeAuthAdapter(kinde) {
 function buildQueryClient(getTokenFn) {
  
   async function authFetch(url, opts = {}) {
-    const token = await getTokenFn();
+    // Supabase no puede verificar JWTs de Kinde sin Third Party Auth configurado.
+    // Usamos el anon key para todas las queries; el control de acceso lo maneja la app.
     return fetch(url, {
       ...opts,
       headers: {
@@ -109,7 +110,7 @@ function buildQueryClient(getTokenFn) {
         'Accept':       'application/json',
         ...(opts.headers || {}),
         'apikey':        SUPABASE_ANON_KEY,
-        'Authorization': token ? `Bearer ${token}` : `Bearer ${SUPABASE_ANON_KEY}`,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
       },
     });
   }
