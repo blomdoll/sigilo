@@ -241,93 +241,33 @@ function stab(tab) {
 
 async function login() {
   const email = document.getElementById('lu').value.trim();
-  const password = document.getElementById('lp').value;
   const errEl = document.getElementById('le');
   errEl.textContent = '';
+  if (!email) { errEl.textContent = 'Ingresá tu correo electrónico.'; return; }
   const btn = document.querySelector('#lf .btn-fill');
-  if (btn) { btn.textContent = 'ingresando...'; btn.disabled = true; }
-  const { data, error } = await db.auth.signInWithPassword({ email, password });
-  if (btn) { btn.textContent = 'Ingresar'; btn.disabled = false; }
-  if (error) {
-    const msg = error.message || '';
-    if (msg.includes('password') || msg.includes('identifier') || msg.includes('Invalid')) {
-      errEl.textContent = 'Correo o contraseña incorrectos.';
-    } else if (msg.includes('too many')) {
-      errEl.textContent = 'Demasiados intentos. Espera unos minutos.';
-    } else {
-      errEl.textContent = msg;
-    }
-  } else {
-    S.me = data.user;
-    boot();
-  }
+  if (btn) { btn.textContent = 'redirigiendo...'; btn.disabled = true; }
+  // Kinde redirige al proveedor de auth — el resto de la lógica ocurre al volver
+  await db.auth.signInWithPassword({ email });
 }
 
 async function register() {
   const email = document.getElementById('re').value.trim();
-  const password = document.getElementById('rp').value;
   const username = document.getElementById('ru').value.trim();
   const errEl = document.getElementById('ree');
   errEl.textContent = '';
 
   if (!username) { errEl.textContent = 'El nombre de usuario es obligatorio.'; return; }
-  if (username.length < 3) { errEl.textContent = 'El nombre de usuario debe tener al menos 3 caracteres.'; return; }
+  if (username.length < 4) { errEl.textContent = 'El nombre de usuario debe tener al menos 4 caracteres.'; return; }
   if (!/^[a-zA-Z0-9_]+$/.test(username)) { errEl.textContent = 'Solo letras, números y guión bajo.'; return; }
   if (!email) { errEl.textContent = 'El correo electrónico es obligatorio.'; return; }
-  if (!password) { errEl.textContent = 'La contraseña es obligatoria.'; return; }
-  if (password.length < 8) { errEl.textContent = 'La contraseña debe tener al menos 8 caracteres.'; return; }
+
+  // Guardar username para usarlo cuando Kinde regrese con la sesión nueva
+  try { sessionStorage.setItem('sigilo_pending_username', username); } catch(e) {}
 
   const btn = document.querySelector('#rf .btn-fill');
-  if (btn) { btn.textContent = 'verificando...'; btn.disabled = true; }
-
-  // Verificar que el username no esté en uso (comparación case-insensitive manual)
-  const { data: existingUser } = await db.from('profiles')
-    .select('id')
-    .eq('username', username.toLowerCase())
-    .maybeSingle();
-  if (existingUser) {
-    errEl.textContent = 'Ese nombre de usuario ya está en uso. Elige otro.';
-    if (btn) { btn.textContent = 'Crear cuenta'; btn.disabled = false; }
-    return;
-  }
-
-  if (btn) { btn.textContent = 'creando cuenta...'; }
-  const { data, error } = await db.auth.signUp({ email, password, options: { data: { display_name: username } } });
-  if (btn) { btn.textContent = 'Crear cuenta'; btn.disabled = false; }
-  if (error) {
-    const msg = error.message || '';
-    if (msg.includes('email') && msg.includes('taken')) {
-      errEl.textContent = 'Ese correo ya tiene una cuenta.';
-    } else if (msg.includes('username') && msg.includes('taken')) {
-      errEl.textContent = 'Ese nombre de usuario ya está en uso.';
-    } else if (msg.includes('password')) {
-      errEl.textContent = 'La contraseña no cumple los requisitos mínimos.';
-    } else {
-      errEl.textContent = msg;
-    }
-    return;
-  }
-  if (data.user) {
-    try {
-      await db.from('profiles').upsert([{
-        id: data.user.id,
-        username: username.toLowerCase(),
-        display_name: username,
-        avatar_url: null,
-        bio: '',
-      }], { onConflict: 'id' });
-    } catch(e) { /* no bloquear el registro si falla */ }
-    S.me = data.user;
-    boot();
-  } else if (data.needsVerification) {
-    if (btn) { btn.textContent = 'Crear cuenta'; btn.disabled = false; }
-    toast('¡Cuenta creada! Revisa tu correo electrónico para confirmar tu cuenta y luego inicia sesión.');
-    stab('login');
-  } else {
-    if (btn) { btn.textContent = 'Crear cuenta'; btn.disabled = false; }
-    toast('¡Cuenta creada! Revisa tu correo para confirmar y luego inicia sesión.');
-    stab('login');
-  }
+  if (btn) { btn.textContent = 'redirigiendo...'; btn.disabled = true; }
+  // Kinde redirige al proveedor de auth — el resto de la lógica ocurre al volver
+  await db.auth.signUp({ email });
 }
 
 function showLoading() {
@@ -374,7 +314,7 @@ async function boot() {
   refreshMyAvatarUrl();
 
   // Sincronizar bio desde profiles al arranque (fuente de verdad)
-  if (S.me && !S.me.user_metadata?.bio) {
+  if (!S.me.user_metadata?.bio) {
     db.from('profiles').select('bio').eq('id', S.me.id).single().then(({ data }) => {
       if (data?.bio) {
         S._profileBio = data.bio;
@@ -685,14 +625,11 @@ async function logout() {
   unsubscribeNotifs();
   if (_tsInterval) { clearInterval(_tsInterval); _tsInterval = null; }
   if (_sentinel) { _sentinel.disconnect(); _sentinel = null; }
-  try { await db.auth.signOut(); } catch(e) {}
+  await db.auth.signOut();
   S.me = null; S.notifs = []; S.notifOpen = false;
-  const appEl = document.getElementById('app');
-  const authEl = document.getElementById('auth');
-  if (appEl) appEl.style.display = 'none';
-  if (authEl) authEl.style.display = 'flex';
-  const luEl = document.getElementById('lu'); if (luEl) luEl.value = '';
-  const lpEl = document.getElementById('lp'); if (lpEl) lpEl.value = '';
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('auth').style.display = 'flex';
+  document.getElementById('lu').value = ''; document.getElementById('lp').value = '';
   stab('login');
   // Limpiar historial para que atrás no vuelva a una página protegida
   try { history.replaceState(null, '', window.location.pathname); } catch(e) {}
@@ -905,19 +842,13 @@ function renderNotifPanel() {
 }
 
 function clearNotifs() {
-  if (S.me) db.from('notifications').delete().eq('to_uid', S.me.id).then(() => {}).catch(() => {});
+  db.from('notifications').delete().eq('to_uid', S.me.id).then(() => {});
   S.notifs=[]; renderNotifBadge(); renderNotifPanel();
 }
 
 function goNotif(postId) {
   S.notifOpen = false; renderNotifPanel();
-  // Decidir a qué sección navegar según si el post es de comunidad o feed
-  const p = findPost(isNaN(postId)?postId:Number(postId));
-  if (p && p.is_community) {
-    goCommunity();
-  } else {
-    gofeed();
-  }
+  gofeed();
   setTimeout(() => {
     const el = document.getElementById('post-' + safeId(postId));
     if (el) { el.scrollIntoView({ behavior:'smooth', block:'center' }); el.classList.add('highlight'); setTimeout(()=>el.classList.remove('highlight'),1800); }
@@ -1177,7 +1108,7 @@ async function postCommunity() {
   const txt = ta.value.trim();
   if (!txt) return toast('escribe algo primero');
   if (txt.length > MAX_CHARS) return toast('máximo ' + MAX_CHARS + ' caracteres');
-  const btn = document.querySelector('.ccard .pbtn, #ct-comm ~ * .pbtn') || document.querySelector('.pbtn');
+  const btn = document.querySelector('.pbtn');
   if (btn) { btn.textContent = 'publicando...'; btn.disabled = true; }
   const { data, error } = await db.from('posts').insert([{
     body: txt,
@@ -1203,7 +1134,7 @@ async function postCommunity() {
     const ta = document.getElementById('ct-comm');
     if (ta) ta.value = '';
     const cc = document.getElementById('cc-comm');
-    if (cc) cc.textContent = String(MAX_CHARS);
+    if (cc) cc.textContent = '0/' + MAX_CHARS;
     const first = document.querySelector('.pcard');
     if (first) { first.classList.add('new-post'); setTimeout(() => first.classList.remove('new-post'), 400); }
   }, 30);
@@ -2121,6 +2052,8 @@ async function scmt(id) {
     const csec = card?.querySelector('.csec');
     if (csec) {
       // Añadir el nuevo comentario al DOM usando renderComment
+      const cmDiv = document.createElement('div');
+      cmDiv.outerHTML; // just to force parse
       const tmp = document.createElement('template');
       tmp.innerHTML = renderComment(nuevoComentario, id, cid);
       const newNode = tmp.content.firstElementChild;
@@ -2285,11 +2218,9 @@ function togglePw(inputId, btn) {
 // --- VALIDACION INLINE AUTH ---
 function validateLogin() {
   const email = document.getElementById('lu').value.trim();
-  const pw = document.getElementById('lp').value;
   const err = document.getElementById('le');
   if (!email) { err.textContent = 'ingresa tu correo'; return false; }
   if (!email.includes('@')) { err.textContent = 'correo inválido'; return false; }
-  if (!pw) { err.textContent = 'ingresa tu contraseña'; return false; }
   err.textContent = '';
   return true;
 }
@@ -2297,12 +2228,10 @@ function validateLogin() {
 function validateRegister() {
   const user = document.getElementById('ru').value.trim();
   const email = document.getElementById('re').value.trim();
-  const pw = document.getElementById('rp').value;
   const err = document.getElementById('ree');
   if (!user) { err.textContent = 'elige un nombre de usuario'; return false; }
   if (user.length < 3) { err.textContent = 'el nombre de usuario debe tener al menos 3 caracteres'; return false; }
   if (!email || !email.includes('@')) { err.textContent = 'correo inválido'; return false; }
-  if (pw.length < 6) { err.textContent = 'la contraseña debe tener al menos 6 caracteres'; return false; }
   err.textContent = '';
   return true;
 }
@@ -2576,7 +2505,6 @@ async function tlikeCmt(postId, cmtId) {
 }
 
 // --- COPY con feedback visual ---
-// La versión extendida añade animación visual al botón
 const _origCopyPost = copyPost;
 window.copyPost = function(id) {
   const doFeedback = () => {
@@ -2657,6 +2585,31 @@ document.addEventListener('neon-ready', async () => {
     const { data } = await db.auth.getSession();
     if (data?.session) {
       S.me = data.session.user;
+
+      // Si es un usuario nuevo (viene del registro en Kinde), crear su perfil en Supabase
+      try {
+        const pendingUsername = sessionStorage.getItem('sigilo_pending_username');
+        if (pendingUsername) {
+          sessionStorage.removeItem('sigilo_pending_username');
+          // Verificar si ya tiene perfil
+          const { data: existing } = await db.from('profiles')
+            .select('id').eq('id', S.me.id).maybeSingle();
+          if (!existing) {
+            await db.from('profiles').upsert([{
+              id: S.me.id,
+              username: pendingUsername,
+              display_name: pendingUsername,
+              avatar_url: null,
+              bio: '',
+            }], { onConflict: 'id' });
+            // Actualizar S.me con el username elegido
+            S.me.user_metadata = S.me.user_metadata || {};
+            S.me.user_metadata.display_name = pendingUsername;
+            S.me.user_metadata.username = pendingUsername;
+          }
+        }
+      } catch(e) { /* no bloquear el boot si falla */ }
+
       boot();
     } else {
       hideLoading();
