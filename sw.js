@@ -1,14 +1,14 @@
-const CACHE_NAME = 'sigilo-v6'; 
+const CACHE_NAME = 'sigilo-v7'; 
 const assets = [
   '/',
   '/index.html',
   '/styles.css',
   '/script.js',
   '/kinde-init.js',
+  '/kinde-auth-pkce-js.umd.min.js',
   '/site.webmanifest',
   '/favicon-96x96.png',
   '/apple-touch-icon.png'
-  '/kinde-auth-pkce-js.umd.min.js'
 ];
 
 // Al instalar: llenar caché nueva y activar inmediatamente
