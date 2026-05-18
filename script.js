@@ -1,6 +1,3 @@
-// db se inicializa en neon-init.js (ESM) y queda disponible en window.db.
-// Se usa un Proxy para que cualquier acceso a `db` siempre lea window.db,
-// sin importar cuándo se resuelva el módulo ESM.
 const db = new Proxy({}, {
   get(_, prop) {
     if (!window.db) {
@@ -168,10 +165,8 @@ function loadSavedTheme() {
   applyTheme('durazno');
 }
 
-// Aplicar tema guardado inmediatamente
 loadSavedTheme();
 
-// --- NAVEGACIÓN A CONFIGURACIÓN ---
 function gosettings() {
   S.page = 'settings'; S.menu = null;
   renderPostMenu();
@@ -220,7 +215,7 @@ function rsettings() {
 
 function selectTheme(themeId) {
   applyTheme(themeId);
-  // Re-render solo la grilla sin recargar toda la página
+
   const grid = document.querySelector('.theme-grid');
   if (grid) {
     grid.querySelectorAll('.theme-card').forEach(card => {
@@ -246,7 +241,7 @@ async function login() {
   if (!email) { errEl.textContent = 'Ingresá tu correo electrónico.'; return; }
   const btn = document.querySelector('#lf .btn-fill');
   if (btn) { btn.textContent = 'redirigiendo...'; btn.disabled = true; }
-  // Kinde redirige al proveedor de auth — el resto de la lógica ocurre al volver
+
   await db.auth.signInWithPassword({ email });
 }
 
@@ -261,12 +256,11 @@ async function register() {
   if (!/^[a-zA-Z0-9_]+$/.test(username)) { errEl.textContent = 'Solo letras, números y guión bajo.'; return; }
   if (!email) { errEl.textContent = 'El correo electrónico es obligatorio.'; return; }
 
-  // Guardar username para usarlo cuando Kinde regrese con la sesión nueva
   try { sessionStorage.setItem('sigilo_pending_username', username); } catch(e) {}
 
   const btn = document.querySelector('#rf .btn-fill');
   if (btn) { btn.textContent = 'redirigiendo...'; btn.disabled = true; }
-  // Kinde redirige al proveedor de auth — el resto de la lógica ocurre al volver
+  
   await db.auth.signUp({ email });
 }
 
@@ -293,7 +287,6 @@ function hideLoading() {
 
 async function refreshMyAvatarUrl() {
   // Los avatares están en Cloudflare — la URL guardada en profiles/user_metadata
-  // es permanente y no necesita refresh. Esta función no hace nada.
   return;
 }
 
@@ -303,31 +296,31 @@ async function boot() {
   const app = document.getElementById('app');
   app.style.display = 'flex'; app.style.flexDirection = 'column'; app.style.minHeight = '100%';
 
-  // Inicializar el estado del historial para que popstate funcione desde el primer momento
   try {
     if (!history.state) {
       history.replaceState({ page: 'feed', puid: null, ptab: 'posts' }, '', window.location.pathname);
     }
   } catch(e) {}
 
-  // Refrescar URL firmada del avatar al iniciar sesión (reduce egress público)
+  // refrescar URL del avatar al iniciar sesión (reduce egressss)
   refreshMyAvatarUrl();
 
-  // Sincronizar bio desde profiles al arranque (fuente de verdad)
-  if (!S.me.user_metadata?.bio) {
-    db.from('profiles').select('bio').eq('id', S.me.id).single().then(({ data }) => {
-      if (data?.bio) {
-        S._profileBio = data.bio;
-        S.me.user_metadata = S.me.user_metadata || {};
-        S.me.user_metadata.bio = data.bio;
-      }
-    }).catch(() => {});
-  } else {
-    S._profileBio = S.me.user_metadata.bio;
-  }
+// perfil completo desde supabase al arranque
+db.from('profiles')
+  .select('avatar_url, bio, display_name, username')
+  .eq('id', S.me.id)
+  .then(({ data }) => {
+    const d = data?.[0];
+    if (!d) return;
+    S.me.user_metadata = S.me.user_metadata || {};
+    S.me.user_metadata.avatar_url   = d.avatar_url;
+    S.me.user_metadata.bio          = d.bio;
+    S.me.user_metadata.display_name = d.display_name || d.username;
+    S.me.user_metadata.username     = d.username;
+    S._profileBio = d.bio || '';
+    if (S.page === 'profile' && S.puid === S.me.id) render();
+  }).catch(() => {});
 
-  // ── ANUNCIOS: iniciar sistema de popup al arrancar ──────────────
-  // Para publicar un anuncio, edita ANNOUNCE_CONFIG en script_announce.js
   if (typeof initAnnounce === 'function') initAnnounce();
   // ───────────────────────────────────────────────────────────────
 
