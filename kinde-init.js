@@ -1,11 +1,11 @@
-const KINDE_DOMAIN      = 'https://sigilo.kinde.com';   // ej: https://sigilo.kinde.com
-const KINDE_CLIENT_ID   = '868889eecb5d4b71bc630f2798cf5d0e';               // SPA app → Client ID (NO el M2M)
+const KINDE_DOMAIN      = 'https://sigilo.kinde.com';
+const KINDE_CLIENT_ID   = '868889eecb5d4b71bc630f2798cf5d0e';
 
 const SUPABASE_URL      = 'https://trkfwxxxeethqnqedxfk.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRya2Z3eHh4ZWV0aHFucWVkeGZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NTA0MTQsImV4cCI6MjA5NDUyNjQxNH0._gxl70CEc3MNVEZVOAX5jQDrvJAuFINHYhPa7Gtbstw';
- 
+
 // ──────────────────────────────────────────────────────────────
- 
+
 function showFatalError(msg, detail = '') {
   const ld = document.getElementById('loading-screen');
   if (ld) {
@@ -18,7 +18,7 @@ function showFatalError(msg, detail = '') {
       </div>`;
   }
 }
- 
+
 function kindeUserToSupabase(user) {
   if (!user) return null;
   const displayName =
@@ -27,22 +27,22 @@ function kindeUserToSupabase(user) {
     user.name ||
     user.email?.split('@')[0] ||
     'usuario';
- 
+
   return {
     id:    user.id,
     email: user.email || '',
     user_metadata: {
       display_name: user.given_name || displayName,
       avatar_url:   user.picture || null,
-      bio:          '',
+      bio:          null, // null = no cargado aún; se sincroniza desde profiles en boot()
       username:     user.given_name || displayName,
     },
     _kinde_id: user.id,
   };
 }
- 
+
 function makeAuthAdapter(kinde) {
- 
+
   async function getSession() {
     try {
       const isAuth = await kinde.isAuthenticated();
@@ -62,7 +62,7 @@ function makeAuthAdapter(kinde) {
       return { data: { session: null }, error: { message: e.message } };
     }
   }
- 
+
   async function signInWithPassword({ email }) {
     try {
       if (email) sessionStorage.setItem('sigilo_login_hint', email);
@@ -72,7 +72,7 @@ function makeAuthAdapter(kinde) {
       return { data: null, error: { message: e.message || 'Error al iniciar sesión.' } };
     }
   }
- 
+
   async function signUp({ email }) {
     try {
       await kinde.register({ login_hint: email });
@@ -81,27 +81,26 @@ function makeAuthAdapter(kinde) {
       return { data: null, error: { message: e.message || 'Error al registrarse.' } };
     }
   }
- 
+
   async function signOut() {
     try { await kinde.logout(); } catch (e) {}
     return { error: null };
   }
- 
+
   async function updateUser() {
     return { data: { user: null }, error: null };
   }
- 
+
   function onAuthStateChange() {
     return { data: { subscription: { unsubscribe: () => {} } } };
   }
- 
+
   return { getSession, signInWithPassword, signUp, signOut, updateUser, onAuthStateChange };
 }
- 
+
 function makeDbProxy(kinde) {
   const auth = makeAuthAdapter(kinde);
 
-  // Cache del PostgrestClient — se inicializa una sola vez
   let _pgClient = null;
 
   async function authFetch(url, opts = {}) {
@@ -124,15 +123,11 @@ function makeDbProxy(kinde) {
     return _pgClient;
   }
 
-  // Devuelve un proxy que acumula llamadas de métodos y las ejecuta
-  // en cuanto el builder asíncrono esté disponible.
   function makeChain(builderPromise) {
-    // Cola de operaciones pendientes: [{method, args}]
     const ops = [];
 
     const proxy = new Proxy({}, {
       get(_, prop) {
-        // Cuando se hace "await" o ".then()" → ejecutar toda la cadena
         if (prop === 'then' || prop === 'catch' || prop === 'finally') {
           const resultPromise = builderPromise.then(async client => {
             let b = client;
@@ -146,7 +141,6 @@ function makeDbProxy(kinde) {
           });
           return resultPromise[prop].bind(resultPromise);
         }
-        // Acumular métodos en la cadena
         return (...args) => {
           ops.push({ method: prop, args });
           return proxy;
@@ -165,14 +159,13 @@ function makeDbProxy(kinde) {
     }
   };
 }
- 
+
 // ──────────────────────────────────────────────────────────────
-//  Bootstrap — carga el SDK de Kinde via script tag (UMD)
+//  Bootstrap
 // ──────────────────────────────────────────────────────────────
- 
+
 (async () => {
   try {
-    // Cargar el SDK de Kinde como script UMD (más compatible con browsers)
     await new Promise((resolve, reject) => {
       const s = document.createElement('script');
       s.src = '/kinde-auth-pkce-js.umd.min.js';
@@ -180,22 +173,20 @@ function makeDbProxy(kinde) {
       s.onerror = () => reject(new Error('No se pudo cargar el SDK de Kinde desde el CDN.'));
       document.head.appendChild(s);
     });
- 
-    // El UMD expone la función en window — probamos los nombres posibles
+
     const createKindeClient =
       window.createKindeClient ||
       window.KindeAuth?.createKindeClient ||
       window['kinde-auth-pkce-js']?.createKindeClient;
- 
+
     if (typeof createKindeClient !== 'function') {
-      // Fallback: intentar con el nombre del objeto exportado
       const allKeys = Object.keys(window).filter(k => k.toLowerCase().includes('kinde'));
       throw new Error(
         'createKindeClient no encontrado. Claves de Kinde en window: ' +
         (allKeys.join(', ') || 'ninguna')
       );
     }
- 
+
     const kinde = await createKindeClient({
       client_id:    KINDE_CLIENT_ID,
       domain:       KINDE_DOMAIN,
@@ -203,123 +194,128 @@ function makeDbProxy(kinde) {
       logout_uri:   window.location.origin,
       scope:        'openid profile email',
     });
- 
-    // Procesar callback de Kinde al volver del login/register
+
     if (window.location.search.includes('code=')) {
       await kinde.handleRedirectCallback();
       window.history.replaceState({}, document.title, window.location.pathname);
     }
- 
+
     window._kinde = kinde;
     const db = makeDbProxy(kinde);
     window.db = db;
 
-// ── Migración automática de IDs ────────────────────────────
-try {
-  const isAuth = await kinde.isAuthenticated();
-  if (isAuth) {
-    const kindeUser = kinde.getUser();
-    if (kindeUser && kindeUser.id) {
-      const kindeId    = kindeUser.id;
-      const kindeEmail = kindeUser.email || '';
-      const kindeName  = kindeUser.given_name || kindeUser.name || '';
+    // ── Migración automática de IDs (con timeout de seguridad de 5s) ──
+    await Promise.race([
+      (async () => {
+        try {
+          const isAuth = await kinde.isAuthenticated();
+          if (!isAuth) return;
 
-      const headers = {
-        'Content-Type': 'application/json',
-        'apikey':        SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        'Prefer':        'return=minimal',
-      };
-      const base = SUPABASE_URL + '/rest/v1';
-      const get  = (filter) =>
-        fetch(`${base}/profiles?${filter}&select=*`, { headers }).then(r => r.json());
-      const patch = (filter, body) =>
-        fetch(`${base}/profiles?${filter}`, { method: 'PATCH', headers, body: JSON.stringify(body) });
+          const kindeUser = kinde.getUser();
+          if (!kindeUser || !kindeUser.id) return;
 
-      // 1. Buscar perfil con el ID de Kinde (puede existir vacío de una migración previa fallida)
-      const [perfilNuevo] = await get(`id=eq.${kindeId}`);
+          const kindeId    = kindeUser.id;
+          const kindeEmail = kindeUser.email || '';
+          const kindeName  = kindeUser.given_name || kindeUser.name || '';
 
-      // 2. Buscar perfil viejo (UUID) por email o por nombre
-      let perfilViejo = null;
-      if (kindeEmail) {
-        const byEmail = await get(`email=eq.${encodeURIComponent(kindeEmail)}&id=not.like.kp_*`);
-        if (byEmail.length === 1) perfilViejo = byEmail[0];
-      }
-      if (!perfilViejo && kindeName) {
-        const byName = await get(`display_name=eq.${encodeURIComponent(kindeName)}&id=not.like.kp_*`);
-        if (byName.length === 1) perfilViejo = byName[0];
-      }
+          const headers = {
+            'Content-Type': 'application/json',
+            'apikey':        SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Prefer':        'return=minimal',
+          };
+          const base = SUPABASE_URL + '/rest/v1';
 
-      // CASO A: tiene perfil nuevo kp_ vacío Y perfil viejo con datos → fusionar
-      const nuevoEstaVacio = perfilNuevo && !perfilNuevo.avatar_url && !perfilNuevo.bio;
-      if (perfilNuevo && perfilViejo && nuevoEstaVacio) {
-        console.log(`[Sigilo] Fusionando perfil vacío kp_ con datos del viejo ${perfilViejo.id}`);
+          const get = (filter) =>
+            fetch(`${base}/profiles?${filter}&select=*`, { headers }).then(r => r.json());
+          const patchProfile = (filter, body) =>
+            fetch(`${base}/profiles?${filter}`, { method: 'PATCH', headers, body: JSON.stringify(body) });
+          const patchTable = (table, filter, body) =>
+            fetch(`${base}/${table}?${filter}`, { method: 'PATCH', headers, body: JSON.stringify(body) });
 
-        // Copiar datos del viejo al nuevo
-        await patch(`id=eq.${kindeId}`, {
-          avatar_url:      perfilViejo.avatar_url,
-          bio:             perfilViejo.bio,
-          followers_count: perfilViejo.followers_count,
-          following_count: perfilViejo.following_count,
-          email:           kindeEmail || perfilViejo.email,
-        });
+          // Buscar perfil con ID de Kinde
+          const resNuevo = await get(`id=eq.${kindeId}`);
+          const perfilNuevo = Array.isArray(resNuevo) ? resNuevo[0] : null;
 
-        // Reasignar tablas hijas del viejo al nuevo
-        const patchTable = (table, filter, body) =>
-          fetch(`${base}/${table}?${filter}`, { method: 'PATCH', headers, body: JSON.stringify(body) });
-        const oldId = perfilViejo.id;
-        await patchTable('posts',         `user_id=eq.${oldId}`,      { user_id: kindeId });
-        await patchTable('follows',       `follower_id=eq.${oldId}`,  { follower_id: kindeId });
-        await patchTable('follows',       `following_id=eq.${oldId}`, { following_id: kindeId });
-        await patchTable('folders',       `user_id=eq.${oldId}`,      { user_id: kindeId });
-        await patchTable('notifications', `to_uid=eq.${oldId}`,       { to_uid: kindeId });
-        await patchTable('notifications', `from_uid=eq.${oldId}`,     { from_uid: kindeId });
+          // Buscar perfil viejo (UUID) por email o nombre
+          let perfilViejo = null;
+          if (kindeEmail) {
+            const byEmail = await get(`email=eq.${encodeURIComponent(kindeEmail)}&id=not.like.kp_*`);
+            if (Array.isArray(byEmail) && byEmail.length === 1) perfilViejo = byEmail[0];
+          }
+          if (!perfilViejo && kindeName) {
+            const byName = await get(`display_name=eq.${encodeURIComponent(kindeName)}&id=not.like.kp_*`);
+            if (Array.isArray(byName) && byName.length === 1) perfilViejo = byName[0];
+          }
 
-        // Borrar perfil viejo
-        await fetch(`${base}/profiles?id=eq.${oldId}`, { method: 'DELETE', headers });
-        console.log('[Sigilo] Fusión completada ✅');
-      }
+          const nuevoEstaVacio = perfilNuevo && !perfilNuevo.avatar_url && !perfilNuevo.bio;
 
-      // CASO B: no tiene perfil nuevo kp_ Y tiene perfil viejo → migración completa
-      else if (!perfilNuevo && perfilViejo) {
-        console.log(`[Sigilo] Migrando ID: ${perfilViejo.id} → ${kindeId}`);
+          // CASO A: perfil kp_ vacío + perfil UUID con datos → fusionar
+          if (perfilNuevo && perfilViejo && nuevoEstaVacio) {
+            console.log(`[Sigilo] Fusionando perfil vacío con datos del viejo ${perfilViejo.id}`);
+            const oldId = perfilViejo.id;
 
-        // Insertar perfil nuevo copiando todos los datos del viejo
-        const perfilNuevoData = { ...perfilViejo, id: kindeId, email: kindeEmail || perfilViejo.email };
-        await fetch(`${base}/profiles`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(perfilNuevoData),
-        });
+            await patchProfile(`id=eq.${kindeId}`, {
+              avatar_url:      perfilViejo.avatar_url,
+              bio:             perfilViejo.bio,
+              followers_count: perfilViejo.followers_count,
+              following_count: perfilViejo.following_count,
+              email:           kindeEmail || perfilViejo.email,
+            });
+            await patchTable('posts',         `user_id=eq.${oldId}`,      { user_id: kindeId });
+            await patchTable('follows',       `follower_id=eq.${oldId}`,  { follower_id: kindeId });
+            await patchTable('follows',       `following_id=eq.${oldId}`, { following_id: kindeId });
+            await patchTable('folders',       `user_id=eq.${oldId}`,      { user_id: kindeId });
+            await patchTable('notifications', `to_uid=eq.${oldId}`,       { to_uid: kindeId });
+            await patchTable('notifications', `from_uid=eq.${oldId}`,     { from_uid: kindeId });
+            await fetch(`${base}/profiles?id=eq.${oldId}`, { method: 'DELETE', headers });
+            console.log('[Sigilo] Fusión completada ✅');
+          }
 
-        // Reasignar tablas hijas
-        const patchTable = (table, filter, body) =>
-          fetch(`${base}/${table}?${filter}`, { method: 'PATCH', headers, body: JSON.stringify(body) });
-        const oldId = perfilViejo.id;
-        await patchTable('posts',         `user_id=eq.${oldId}`,      { user_id: kindeId });
-        await patchTable('follows',       `follower_id=eq.${oldId}`,  { follower_id: kindeId });
-        await patchTable('follows',       `following_id=eq.${oldId}`, { following_id: kindeId });
-        await patchTable('folders',       `user_id=eq.${oldId}`,      { user_id: kindeId });
-        await patchTable('notifications', `to_uid=eq.${oldId}`,       { to_uid: kindeId });
-        await patchTable('notifications', `from_uid=eq.${oldId}`,     { from_uid: kindeId });
+          // CASO B: solo perfil UUID, sin kp_ → migración completa
+          else if (!perfilNuevo && perfilViejo) {
+            console.log(`[Sigilo] Migrando ID: ${perfilViejo.id} → ${kindeId}`);
+            const oldId = perfilViejo.id;
 
-        // Borrar perfil viejo
-        await fetch(`${base}/profiles?id=eq.${oldId}`, { method: 'DELETE', headers });
-        console.log('[Sigilo] Migración completa ✅');
-      }
+            const perfilNuevoData = { ...perfilViejo, id: kindeId, email: kindeEmail || perfilViejo.email };
+            await fetch(`${base}/profiles`, {
+              method: 'POST', headers, body: JSON.stringify(perfilNuevoData),
+            });
+            await patchTable('posts',         `user_id=eq.${oldId}`,      { user_id: kindeId });
+            await patchTable('follows',       `follower_id=eq.${oldId}`,  { follower_id: kindeId });
+            await patchTable('follows',       `following_id=eq.${oldId}`, { following_id: kindeId });
+            await patchTable('folders',       `user_id=eq.${oldId}`,      { user_id: kindeId });
+            await patchTable('notifications', `to_uid=eq.${oldId}`,       { to_uid: kindeId });
+            await patchTable('notifications', `from_uid=eq.${oldId}`,     { from_uid: kindeId });
+            await fetch(`${base}/profiles?id=eq.${oldId}`, { method: 'DELETE', headers });
+            console.log('[Sigilo] Migración completa ✅');
+          }
 
-      // CASO C: ya tiene perfil kp_ con datos → solo actualizar email si falta
-      else if (perfilNuevo && !nuevoEstaVacio) {
-        if (kindeEmail && !perfilNuevo.email) {
-          await patch(`id=eq.${kindeId}`, { email: kindeEmail });
+          // CASO C: perfil kp_ ya con datos → solo guardar email si falta
+          else if (perfilNuevo && !nuevoEstaVacio) {
+            if (kindeEmail && !perfilNuevo.email) {
+              await patchProfile(`id=eq.${kindeId}`, { email: kindeEmail });
+            }
+          }
+
+          // CASO D: sin perfil viejo ni nuevo → usuario nuevo, nada que migrar
+
+        } catch (migErr) {
+          console.warn('[Sigilo] Error en migración (no crítico):', migErr.message);
         }
-      }
+      })(),
+      new Promise(resolve => setTimeout(resolve, 5000)), // timeout 5s de seguridad
+    ]);
+    // ───────────────────────────────────────────────────────────
 
-      // CASO D: no tiene perfil viejo ni nuevo → usuario completamente nuevo, no hacer nada
-      // (el perfil se crea al registrarse con sigilo_pending_username)
-    }
+    document.dispatchEvent(new Event('neon-ready'));
+    console.log('[Sigilo] Kinde + Supabase listos ✅');
+
+  } catch (err) {
+    console.error('[Sigilo] Error al inicializar:', err);
+    showFatalError(
+      'Error al conectar con el sistema de autenticación.',
+      err.message
+    );
   }
-} catch(migErr) {
-  console.warn('[Sigilo] Error en migración (no crítico):', migErr.message);
-}
-// ───────────────────────────────────────────────────────────
+})();
