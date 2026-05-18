@@ -214,72 +214,87 @@ function makeDbProxy(kinde) {
     const db = makeDbProxy(kinde);
     window.db = db;
 
-    // ── Migración automática de IDs ────────────────────────────
-    // Si el usuario viene del Supabase Auth antiguo, su profile.id
-    // es un UUID diferente al kp_xxx de Kinde. Lo detectamos por email
-    // y actualizamos todos los registros automáticamente.
-    try {
-      const isAuth = await kinde.isAuthenticated();
-      if (isAuth) {
-        const kindeUser = kinde.getUser();
-        if (kindeUser && kindeUser.id && kindeUser.email) {
-          const kindeId = kindeUser.id;
-          const kindeEmail = kindeUser.email;
+// migración automática de IDs
+try {
+  const isAuth = await kinde.isAuthenticated();
+  if (isAuth) {
+    const kindeUser = kinde.getUser();
+    if (kindeUser && kindeUser.id) {
+      const kindeId = kindeUser.id;
+      const kindeEmail = kindeUser.email;
+      const kindeName = kindeUser.given_name || kindeUser.name || '';
 
-          // Buscar profile por email (columna que agregamos)
-          const res = await fetch(
-            `${SUPABASE_URL}/rest/v1/profiles?email=eq.${encodeURIComponent(kindeEmail)}&select=id`,
-            {
-              headers: {
-                'apikey': SUPABASE_ANON_KEY,
-                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-              }
-            }
-          );
-          const rows = await res.json();
+      const headers = {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Prefer': 'return=minimal',
+      };
+      const base = SUPABASE_URL + '/rest/v1';
 
-          if (Array.isArray(rows) && rows.length > 0 && rows[0].id !== kindeId) {
-            const oldId = rows[0].id;
-            console.log(`[Sigilo] Migrando ID: ${oldId} → ${kindeId}`);
+      const checkNew = await fetch(
+        `${base}/profiles?id=eq.${kindeId}&select=id`,
+        { headers }
+      );
+      const hasNew = await checkNew.json();
 
-            // Actualizar en orden para respetar foreign keys
-            const headers = {
-              'Content-Type': 'application/json',
-              'apikey': SUPABASE_ANON_KEY,
-              'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-              'Prefer': 'return=minimal',
-            };
-            const base = SUPABASE_URL + '/rest/v1';
+      if (Array.isArray(hasNew) && hasNew.length > 0) {
 
-            await fetch(`${base}/posts?user_id=eq.${oldId}`, { method: 'PATCH', headers, body: JSON.stringify({ user_id: kindeId }) });
-            await fetch(`${base}/notifications?to_uid=eq.${oldId}`, { method: 'PATCH', headers, body: JSON.stringify({ to_uid: kindeId }) });
-            await fetch(`${base}/notifications?from_uid=eq.${oldId}`, { method: 'PATCH', headers, body: JSON.stringify({ from_uid: kindeId }) });
-            await fetch(`${base}/follows?follower_id=eq.${oldId}`, { method: 'PATCH', headers, body: JSON.stringify({ follower_id: kindeId }) });
-            await fetch(`${base}/follows?following_id=eq.${oldId}`, { method: 'PATCH', headers, body: JSON.stringify({ following_id: kindeId }) });
-            await fetch(`${base}/folders?user_id=eq.${oldId}`, { method: 'PATCH', headers, body: JSON.stringify({ user_id: kindeId }) });
-            // Profiles al último (tiene FK)
-            await fetch(`${base}/profiles?id=eq.${oldId}`, { method: 'PATCH', headers, body: JSON.stringify({ id: kindeId, email: kindeEmail }) });
+        if (kindeEmail) {
+          await fetch(`${base}/profiles?id=eq.${kindeId}`, {
+            method: 'PATCH', headers,
+            body: JSON.stringify({ email: kindeEmail })
+          });
+        }
+      } else {
+        let oldProfile = null;
 
-            console.log('[Sigilo] Migración de ID completada ✅');
-          } else if (Array.isArray(rows) && rows.length > 0) {
-            // ID ya coincide, solo asegurarse de que email esté guardado
-            await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${kindeId}`, {
-              method: 'PATCH',
-              headers: {
-                'Content-Type': 'application/json',
-                'apikey': SUPABASE_ANON_KEY,
-                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-                'Prefer': 'return=minimal',
-              },
-              body: JSON.stringify({ email: kindeEmail })
-            });
-          }
+        if (kindeEmail) {
+          const byEmail = await fetch(
+            `${base}/profiles?email=eq.${encodeURIComponent(kindeEmail)}&select=*`,
+            { headers }
+          ).then(r => r.json());
+          if (Array.isArray(byEmail) && byEmail.length > 0) oldProfile = byEmail[0];
+        }
+
+        if (!oldProfile && kindeName) {
+          const byName = await fetch(
+            `${base}/profiles?display_name=eq.${encodeURIComponent(kindeName)}&id=not.like.kp_*&select=*`,
+            { headers }
+          ).then(r => r.json());
+          if (Array.isArray(byName) && byName.length === 1) oldProfile = byName[0];
+        }
+
+        if (oldProfile && oldProfile.id !== kindeId) {
+          const oldId = oldProfile.id;
+          console.log(`[Sigilo] Migrando ID: ${oldId} → ${kindeId}`);
+
+          const perfilNuevo = { ...oldProfile, id: kindeId, email: kindeEmail || oldProfile.email };
+          await fetch(`${base}/profiles`, {
+            method: 'POST', headers: { ...headers, 'Prefer': 'return=minimal' },
+            body: JSON.stringify(perfilNuevo)
+          });
+
+          await fetch(`${base}/posts?user_id=eq.${oldId}`, { method:'PATCH', headers, body: JSON.stringify({ user_id: kindeId }) });
+          await fetch(`${base}/notifications?to_uid=eq.${oldId}`, { method:'PATCH', headers, body: JSON.stringify({ to_uid: kindeId }) });
+          await fetch(`${base}/notifications?from_uid=eq.${oldId}`, { method:'PATCH', headers, body: JSON.stringify({ from_uid: kindeId }) });
+          await fetch(`${base}/follows?follower_id=eq.${oldId}`, { method:'PATCH', headers, body: JSON.stringify({ follower_id: kindeId }) });
+          await fetch(`${base}/follows?following_id=eq.${oldId}`, { method:'PATCH', headers, body: JSON.stringify({ following_id: kindeId }) });
+          await fetch(`${base}/folders?user_id=eq.${oldId}`, { method:'PATCH', headers, body: JSON.stringify({ user_id: kindeId }) });
+
+          await fetch(`${base}/profiles?id=eq.${oldId}`, { method:'DELETE', headers });
+
+          console.log('[Sigilo] Migración automática completada ✅');
+        } else if (!oldProfile) {
+
+          console.log('[Sigilo] Usuario nuevo, sin perfil previo');
         }
       }
-    } catch(migErr) {
-      console.warn('[Sigilo] Error en migración de ID (no crítico):', migErr.message);
     }
-    // ───────────────────────────────────────────────────────────
+  }
+} catch(migErr) {
+  console.warn('[Sigilo] Error en migración (no crítico):', migErr.message);
+}
 
     document.dispatchEvent(new Event('neon-ready'));
     console.log('[Sigilo] Kinde + Supabase listos ✅');
