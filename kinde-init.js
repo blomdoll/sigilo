@@ -214,96 +214,112 @@ function makeDbProxy(kinde) {
     const db = makeDbProxy(kinde);
     window.db = db;
 
-// migración automática de IDs
+// ── Migración automática de IDs ────────────────────────────
 try {
   const isAuth = await kinde.isAuthenticated();
   if (isAuth) {
     const kindeUser = kinde.getUser();
     if (kindeUser && kindeUser.id) {
-      const kindeId = kindeUser.id;
-      const kindeEmail = kindeUser.email;
-      const kindeName = kindeUser.given_name || kindeUser.name || '';
+      const kindeId    = kindeUser.id;
+      const kindeEmail = kindeUser.email || '';
+      const kindeName  = kindeUser.given_name || kindeUser.name || '';
 
       const headers = {
         'Content-Type': 'application/json',
-        'apikey': SUPABASE_ANON_KEY,
+        'apikey':        SUPABASE_ANON_KEY,
         'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        'Prefer': 'return=minimal',
+        'Prefer':        'return=minimal',
       };
       const base = SUPABASE_URL + '/rest/v1';
+      const get  = (filter) =>
+        fetch(`${base}/profiles?${filter}&select=*`, { headers }).then(r => r.json());
+      const patch = (filter, body) =>
+        fetch(`${base}/profiles?${filter}`, { method: 'PATCH', headers, body: JSON.stringify(body) });
 
-      const checkNew = await fetch(
-        `${base}/profiles?id=eq.${kindeId}&select=id`,
-        { headers }
-      );
-      const hasNew = await checkNew.json();
+      // 1. Buscar perfil con el ID de Kinde (puede existir vacío de una migración previa fallida)
+      const [perfilNuevo] = await get(`id=eq.${kindeId}`);
 
-      if (Array.isArray(hasNew) && hasNew.length > 0) {
+      // 2. Buscar perfil viejo (UUID) por email o por nombre
+      let perfilViejo = null;
+      if (kindeEmail) {
+        const byEmail = await get(`email=eq.${encodeURIComponent(kindeEmail)}&id=not.like.kp_*`);
+        if (byEmail.length === 1) perfilViejo = byEmail[0];
+      }
+      if (!perfilViejo && kindeName) {
+        const byName = await get(`display_name=eq.${encodeURIComponent(kindeName)}&id=not.like.kp_*`);
+        if (byName.length === 1) perfilViejo = byName[0];
+      }
 
-        if (kindeEmail) {
-          await fetch(`${base}/profiles?id=eq.${kindeId}`, {
-            method: 'PATCH', headers,
-            body: JSON.stringify({ email: kindeEmail })
-          });
-        }
-      } else {
-        let oldProfile = null;
+      // CASO A: tiene perfil nuevo kp_ vacío Y perfil viejo con datos → fusionar
+      const nuevoEstaVacio = perfilNuevo && !perfilNuevo.avatar_url && !perfilNuevo.bio;
+      if (perfilNuevo && perfilViejo && nuevoEstaVacio) {
+        console.log(`[Sigilo] Fusionando perfil vacío kp_ con datos del viejo ${perfilViejo.id}`);
 
-        if (kindeEmail) {
-          const byEmail = await fetch(
-            `${base}/profiles?email=eq.${encodeURIComponent(kindeEmail)}&select=*`,
-            { headers }
-          ).then(r => r.json());
-          if (Array.isArray(byEmail) && byEmail.length > 0) oldProfile = byEmail[0];
-        }
+        // Copiar datos del viejo al nuevo
+        await patch(`id=eq.${kindeId}`, {
+          avatar_url:      perfilViejo.avatar_url,
+          bio:             perfilViejo.bio,
+          followers_count: perfilViejo.followers_count,
+          following_count: perfilViejo.following_count,
+          email:           kindeEmail || perfilViejo.email,
+        });
 
-        if (!oldProfile && kindeName) {
-          const byName = await fetch(
-            `${base}/profiles?display_name=eq.${encodeURIComponent(kindeName)}&id=not.like.kp_*&select=*`,
-            { headers }
-          ).then(r => r.json());
-          if (Array.isArray(byName) && byName.length === 1) oldProfile = byName[0];
-        }
+        // Reasignar tablas hijas del viejo al nuevo
+        const patchTable = (table, filter, body) =>
+          fetch(`${base}/${table}?${filter}`, { method: 'PATCH', headers, body: JSON.stringify(body) });
+        const oldId = perfilViejo.id;
+        await patchTable('posts',         `user_id=eq.${oldId}`,      { user_id: kindeId });
+        await patchTable('follows',       `follower_id=eq.${oldId}`,  { follower_id: kindeId });
+        await patchTable('follows',       `following_id=eq.${oldId}`, { following_id: kindeId });
+        await patchTable('folders',       `user_id=eq.${oldId}`,      { user_id: kindeId });
+        await patchTable('notifications', `to_uid=eq.${oldId}`,       { to_uid: kindeId });
+        await patchTable('notifications', `from_uid=eq.${oldId}`,     { from_uid: kindeId });
 
-        if (oldProfile && oldProfile.id !== kindeId) {
-          const oldId = oldProfile.id;
-          console.log(`[Sigilo] Migrando ID: ${oldId} → ${kindeId}`);
+        // Borrar perfil viejo
+        await fetch(`${base}/profiles?id=eq.${oldId}`, { method: 'DELETE', headers });
+        console.log('[Sigilo] Fusión completada ✅');
+      }
 
-          const perfilNuevo = { ...oldProfile, id: kindeId, email: kindeEmail || oldProfile.email };
-          await fetch(`${base}/profiles`, {
-            method: 'POST', headers: { ...headers, 'Prefer': 'return=minimal' },
-            body: JSON.stringify(perfilNuevo)
-          });
+      // CASO B: no tiene perfil nuevo kp_ Y tiene perfil viejo → migración completa
+      else if (!perfilNuevo && perfilViejo) {
+        console.log(`[Sigilo] Migrando ID: ${perfilViejo.id} → ${kindeId}`);
 
-          await fetch(`${base}/posts?user_id=eq.${oldId}`, { method:'PATCH', headers, body: JSON.stringify({ user_id: kindeId }) });
-          await fetch(`${base}/notifications?to_uid=eq.${oldId}`, { method:'PATCH', headers, body: JSON.stringify({ to_uid: kindeId }) });
-          await fetch(`${base}/notifications?from_uid=eq.${oldId}`, { method:'PATCH', headers, body: JSON.stringify({ from_uid: kindeId }) });
-          await fetch(`${base}/follows?follower_id=eq.${oldId}`, { method:'PATCH', headers, body: JSON.stringify({ follower_id: kindeId }) });
-          await fetch(`${base}/follows?following_id=eq.${oldId}`, { method:'PATCH', headers, body: JSON.stringify({ following_id: kindeId }) });
-          await fetch(`${base}/folders?user_id=eq.${oldId}`, { method:'PATCH', headers, body: JSON.stringify({ user_id: kindeId }) });
+        // Insertar perfil nuevo copiando todos los datos del viejo
+        const perfilNuevoData = { ...perfilViejo, id: kindeId, email: kindeEmail || perfilViejo.email };
+        await fetch(`${base}/profiles`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(perfilNuevoData),
+        });
 
-          await fetch(`${base}/profiles?id=eq.${oldId}`, { method:'DELETE', headers });
+        // Reasignar tablas hijas
+        const patchTable = (table, filter, body) =>
+          fetch(`${base}/${table}?${filter}`, { method: 'PATCH', headers, body: JSON.stringify(body) });
+        const oldId = perfilViejo.id;
+        await patchTable('posts',         `user_id=eq.${oldId}`,      { user_id: kindeId });
+        await patchTable('follows',       `follower_id=eq.${oldId}`,  { follower_id: kindeId });
+        await patchTable('follows',       `following_id=eq.${oldId}`, { following_id: kindeId });
+        await patchTable('folders',       `user_id=eq.${oldId}`,      { user_id: kindeId });
+        await patchTable('notifications', `to_uid=eq.${oldId}`,       { to_uid: kindeId });
+        await patchTable('notifications', `from_uid=eq.${oldId}`,     { from_uid: kindeId });
 
-          console.log('[Sigilo] Migración automática completada ✅');
-        } else if (!oldProfile) {
+        // Borrar perfil viejo
+        await fetch(`${base}/profiles?id=eq.${oldId}`, { method: 'DELETE', headers });
+        console.log('[Sigilo] Migración completa ✅');
+      }
 
-          console.log('[Sigilo] Usuario nuevo, sin perfil previo');
+      // CASO C: ya tiene perfil kp_ con datos → solo actualizar email si falta
+      else if (perfilNuevo && !nuevoEstaVacio) {
+        if (kindeEmail && !perfilNuevo.email) {
+          await patch(`id=eq.${kindeId}`, { email: kindeEmail });
         }
       }
+
+      // CASO D: no tiene perfil viejo ni nuevo → usuario completamente nuevo, no hacer nada
+      // (el perfil se crea al registrarse con sigilo_pending_username)
     }
   }
 } catch(migErr) {
   console.warn('[Sigilo] Error en migración (no crítico):', migErr.message);
 }
-
-    document.dispatchEvent(new Event('neon-ready'));
-    console.log('[Sigilo] Kinde + Supabase listos ✅');
- 
-  } catch (err) {
-    console.error('[Sigilo] Error al inicializar:', err);
-    showFatalError(
-      'Error al conectar con el sistema de autenticación.',
-      err.message
-    );
-  }
-})();
+// ───────────────────────────────────────────────────────────
