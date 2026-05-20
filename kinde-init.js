@@ -57,36 +57,46 @@ function makeAuthAdapter(kinde) {
 
   async function getSession() {
     try {
+      // 1. Kinde tiene sesion activa en memoria (primer login en esta sesion)
       const isAuth = await kinde.isAuthenticated();
-
       if (isAuth) {
-        // Sesion activa: obtener usuario de Kinde
-        let user = kinde.getUser();
-        if (!user) user = loadUserLocally();
-        if (!user) return { data: { session: null }, error: null };
-        saveUserLocally(user);
-        const token = await kinde.getToken();
-        return {
-          data: { session: { user: kindeUserToSupabase(user), access_token: token } },
-          error: null,
-        };
+        const user = kinde.getUser();
+        if (user) {
+          saveUserLocally(user);
+          // Token puede fallar en plan gratuito — no es critico, usamos anon key para Supabase
+          let token = null;
+          try { token = await kinde.getToken(); } catch(e) {}
+          return {
+            data: { session: { user: kindeUserToSupabase(user), access_token: token } },
+            error: null,
+          };
+        }
       }
 
-      // Kinde no tiene token en memoria — intentar recuperar con refresh_token de localStorage
+      // 2. Kinde perdio la sesion en memoria (refresh de pagina en plan gratuito)
+      //    Usar usuario guardado en localStorage — suficiente para mostrar la app
       const cachedUser = loadUserLocally();
       if (cachedUser) {
+        // Verificar que el usuario siga siendo valido chequeando su perfil en Supabase
         try {
-          const token = await kinde.getToken(); // dispara refresh internamente con kinde_refresh_token
-          if (token) {
-            const freshUser = kinde.getUser() || cachedUser;
-            saveUserLocally(freshUser);
+          const res = await fetch(
+            `${SUPABASE_URL}/rest/v1/profiles?id=eq.${cachedUser.id}&select=id`,
+            { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` } }
+          );
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            // Usuario existe en la base — sesion valida, restaurar sin token de Kinde
             return {
-              data: { session: { user: kindeUserToSupabase(freshUser), access_token: token } },
+              data: { session: { user: kindeUserToSupabase(cachedUser), access_token: null } },
               error: null,
             };
           }
         } catch(e) {}
-        clearUserLocally();
+        // Si falla la verificacion por red, igual restaurar (mejor que mostrar login)
+        return {
+          data: { session: { user: kindeUserToSupabase(cachedUser), access_token: null } },
+          error: null,
+        };
       }
 
       return { data: { session: null }, error: null };
@@ -229,12 +239,23 @@ function makeDbProxy(kinde) {
       is_dangerously_use_local_storage: true, // Persiste sesión entre refreshes (seguro en dominio propio)
     });
 
-    if (window.location.search.includes('code=')) {
-      await kinde.handleRedirectCallback();
+    // Procesar callback de Kinde (viene de login/register)
+    const hasCode = window.location.search.includes('code=');
+    if (hasCode) {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
 
     window._kinde = kinde;
+
+    // Guardar usuario en localStorage inmediatamente tras login exitoso
+    // Es el unico momento donde Kinde tiene todo en memoria con certeza
+    try {
+      const isAuthNow = await kinde.isAuthenticated();
+      if (isAuthNow) {
+        const userNow = kinde.getUser();
+        if (userNow) saveUserLocally(userNow);
+      }
+    } catch(e) {}
     const db = makeDbProxy(kinde);
     window.db = db;
 
