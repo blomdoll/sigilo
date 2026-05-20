@@ -4,7 +4,8 @@ const KINDE_CLIENT_ID   = '868889eecb5d4b71bc630f2798cf5d0e';
 const SUPABASE_URL      = 'https://trkfwxxxeethqnqedxfk.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRya2Z3eHh4ZWV0aHFucWVkeGZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NTA0MTQsImV4cCI6MjA5NDUyNjQxNH0._gxl70CEc3MNVEZVOAX5jQDrvJAuFINHYhPa7Gtbstw';
 
-// ──────────────────────────────────────────────────────────────
+window._sigiloSupabaseUrl      = SUPABASE_URL;
+window._sigiloSupabaseAnonKey  = SUPABASE_ANON_KEY;
 
 function showFatalError(msg, detail = '') {
   const ld = document.getElementById('loading-screen');
