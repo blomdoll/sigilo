@@ -63,11 +63,9 @@ function makeAuthAdapter(kinde) {
         const user = kinde.getUser();
         if (user) {
           saveUserLocally(user);
-          // Token puede fallar en plan gratuito — no es critico, usamos anon key para Supabase
-          let token = null;
-          try { token = await kinde.getToken(); } catch(e) {}
+          // No usamos token de Kinde — Supabase usa anon key directamente
           return {
-            data: { session: { user: kindeUserToSupabase(user), access_token: token } },
+            data: { session: { user: kindeUserToSupabase(user), access_token: null } },
             error: null,
           };
         }
