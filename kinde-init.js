@@ -193,6 +193,7 @@ function makeDbProxy(kinde) {
       redirect_uri: window.location.origin,
       logout_uri:   window.location.origin,
       scope:        'openid profile email',
+      is_dangerously_use_local_storage: true, // Persiste sesión entre refreshes (seguro en dominio propio)
     });
 
     if (window.location.search.includes('code=')) {
