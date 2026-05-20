@@ -1044,18 +1044,13 @@ function applyNavState(state) {
 function gofeed() {
   S.page='feed'; S.explorePage=false; S.communityPage=false; S.feedTab='todos'; S.puid=null; S.menu=null;
   renderPostMenu(); saveNavState(); document.title='inicio · sigilo'; nav();
-  // Si no hay posts en memoria (primera carga o memoria limpiada), hacer fetch antes de render
-  if (S.posts.length === 0) {
-    // Mostrar skeletons mientras carga
-    const mc = document.getElementById('mc');
-    if (mc) {
-      const sk = `<div class="skeleton-card"><div class="sk-head"><div class="sk-line sk-avatar"></div><div class="sk-meta"><div class="sk-line short"></div><div class="sk-line tiny"></div></div></div><div class="sk-line full"></div><div class="sk-line med"></div></div>`;
-      mc.innerHTML = `<div class="ftitle">inicio</div><div class="fsub">comparte decoraciones, letras, símbolos y más</div>${sk.repeat(4)}`;
-    }
-    fetchPosts();
-  } else {
-    render();
+  // Siempre mostrar skeletons y re-fetchear al volver al feed para evitar posts de perfiles anteriores
+  const mc = document.getElementById('mc');
+  if (mc) {
+    const sk = `<div class="skeleton-card"><div class="sk-head"><div class="sk-line sk-avatar"></div><div class="sk-meta"><div class="sk-line short"></div><div class="sk-line tiny"></div></div></div><div class="sk-line full"></div><div class="sk-line med"></div></div>`;
+    mc.innerHTML = `<div class="ftitle">inicio</div><div class="fsub">comparte decoraciones, letras, símbolos y más</div>${sk.repeat(4)}`;
   }
+  fetchPosts(true);
 }
 
 async function goCommunity() {
@@ -1650,19 +1645,24 @@ function rprofile() {
     // S.users se actualiza con datos frescos en vprof(); usar fallback del post mientras carga
     const cached = S.users.find(x => x.id === S.puid);
     const authorData = S.posts.find(p => p.user_id === S.puid);
+    // Buscar el autor también en comunidad y siguiendo para mejor fallback
+    const authorDataFallback = authorData
+      || S.communityPosts?.find(p => p.user_id === S.puid)
+      || S.followingPosts?.find(p => p.user_id === S.puid);
     user = cached || {
       id: S.puid,
-      username: authorData?.username || 'Usuario',
-      display_name: authorData?.username || 'Usuario',
-      avatar_url: authorData?.author_av || null,
+      username: authorDataFallback?.username || null,
+      display_name: authorDataFallback?.username || null,
+      avatar_url: authorDataFallback?.author_av || null,
       bio: undefined  // undefined = aún no cargó; '' = usuario sin bio
     };
   }
 
   // Resolución robusta de nombre y bio (distintos campos según si es propio o ajeno)
-  const displayName = own
-    ? esc(S.me.user_metadata?.display_name || S.me.name || S.me.email || 'Usuario')
-    : esc(user.display_name || user.username || user.name || 'Usuario');
+  const _nameRaw = own
+    ? (S.me.user_metadata?.display_name || S.me.name || S.me.email || 'Usuario')
+    : (user.display_name || user.username || user.name || null);
+  const displayName = _nameRaw ? esc(_nameRaw) : '<span style="color:var(--tx3);font-style:italic;font-size:.9rem">cargando...</span>';
   // Para perfil propio: auth metadata > _profileBio (cargado desde profiles al abrir modal) > ''
   // Para perfil ajeno: S.users cache (cargado en vprof) > ''
   const bioRaw = own
@@ -2138,21 +2138,68 @@ async function getSignedAvatarUrl(userId, path) {
 }
 
 async function havatar(e) {
-  // ⚠️ Los avatares se almacenan en Cloudflare, no en Supabase Storage ni Neon.
-  // Sube la imagen a tu endpoint de Cloudflare y luego actualiza avatar_url en
-  // profiles y en user_metadata con la URL pública resultante.
-  // Por ahora esta función muestra un aviso y no hace nada.
-  toast('Para cambiar el avatar, usa el panel de Cloudflare. Pronto se integrará aquí.');
-  // --- Implementación sugerida cuando tengas el endpoint de Cloudflare: ---
-  // const f = e.target.files[0]; if (!f) return;
-  // const formData = new FormData();
-  // formData.append('file', f);
-  // const res = await fetch('https://tu-worker.workers.dev/upload-avatar', { method: 'POST', body: formData });
-  // const { url } = await res.json();
-  // await db.from('profiles').upsert([{ id: S.me.id, avatar_url: url }], { onConflict: 'id' });
-  // S.me.user_metadata.avatar_url = url;
-  // S.posts.forEach(p => { if (p.user_id === S.me.id) p.author_av = url; });
-  // render(); toast('foto actualizada');
+  const f = e.target.files?.[0];
+  if (!f) return;
+
+  // Validar tipo y tamaño (máx 2MB)
+  if (!f.type.startsWith('image/')) return toast('el archivo debe ser una imagen');
+  if (f.size > 2 * 1024 * 1024) return toast('la imagen debe pesar menos de 2MB');
+
+  toast('subiendo foto...');
+
+  const ext = f.name.split('.').pop().toLowerCase() || 'jpg';
+  const path = `avatars/${S.me.id}.${ext}`;
+  const base = window._sigiloSupabaseUrl || '';
+  const key  = window._sigiloSupabaseAnonKey || '';
+
+  try {
+    // 1. Subir a Supabase Storage (bucket avatars, carpeta pública)
+    const uploadRes = await fetch(`${base}/storage/v1/object/${path}`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${key}`,
+        'apikey': key,
+        'Content-Type': f.type,
+        'x-upsert': 'true',
+      },
+      body: f,
+    });
+
+    if (!uploadRes.ok) {
+      const errText = await uploadRes.text();
+      console.error('[havatar] upload error:', errText);
+      return toast('error al subir la foto, intenta de nuevo');
+    }
+
+    // 2. Construir URL pública
+    const publicUrl = `${base}/storage/v1/object/public/${path}?t=${Date.now()}`;
+
+    // 3. Actualizar profiles en Supabase
+    await fetch(`${base}/rest/v1/profiles?id=eq.${S.me.id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': key,
+        'Authorization': `Bearer ${key}`,
+        'Prefer': 'return=minimal',
+      },
+      body: JSON.stringify({ avatar_url: publicUrl }),
+    });
+
+    // 4. Actualizar estado local
+    S.me.user_metadata = S.me.user_metadata || {};
+    S.me.user_metadata.avatar_url = publicUrl;
+    S.posts.forEach(p => { if (p.user_id === S.me.id) p.author_av = publicUrl; });
+
+    render();
+    toast('foto actualizada ✦');
+  } catch(err) {
+    console.error('[havatar]', err);
+    toast('error al subir la foto');
+  }
+
+  // Limpiar el input para permitir volver a subir la misma imagen
+  e.target.value = '';
 }
 
 async function openmod() {
