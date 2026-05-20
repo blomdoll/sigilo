@@ -132,9 +132,13 @@ function makeAuthAdapter(kinde) {
 
   async function updateUser({ data: userData } = {}) {
     try {
-      const isAuth = await kinde.isAuthenticated();
-      if (!isAuth) return { data: null, error: { message: 'No autenticado' } };
-      const user = kinde.getUser();
+      // Intentar obtener usuario desde Kinde en memoria; si no, usar caché local
+      let user = null;
+      try {
+        const isAuth = await kinde.isAuthenticated();
+        if (isAuth) user = kinde.getUser();
+      } catch(e) {}
+      if (!user) user = loadUserLocally();
       if (!user) return { data: null, error: { message: 'Sin usuario' } };
 
       if (userData) {
