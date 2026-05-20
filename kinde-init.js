@@ -211,7 +211,7 @@ function makeDbProxy(kinde) {
           const isAuth = await kinde.isAuthenticated();
           if (!isAuth) return;
 
-          const kindeUser = kinde.getUser();
+          const kindeUser = await kinde.getUser();
           if (!kindeUser || !kindeUser.id) return;
 
           const kindeId    = kindeUser.id;
