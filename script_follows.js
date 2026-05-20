@@ -1,6 +1,3 @@
-// db es el mismo Proxy definido en script.js — accede a window.db cuando esté listo
-// No redefinir aquí, simplemente heredar el `db` global del scope de script.js
-
 S.followTab        = S.followTab || 'todos';
 S.followingIds     = new Set();
 S.followersOfMe    = null;  
@@ -9,9 +6,6 @@ S.followingLoaded  = false;
 S.followListModal  = null;
 S.profileCounts    = {};
 
-// ------------------
-// INICIALIZACIÓN
-// ------------------
 async function loadFollowingIds() {
   if (!S.me) return;
   try {
@@ -25,9 +19,6 @@ async function loadFollowingIds() {
   } catch(e) { S.followingIds = new Set(); }
 }
 
-// ---------------------
-// FOLLOW / UNFOLLOW
-// ---------------------
 async function followUser(uid) {
   if (!S.me || uid === S.me.id) return;
   const btn = document.querySelector('.follow-btn');
@@ -82,9 +73,6 @@ async function unfollowUser(uid) {
   renderProfileFollowState(uid);
 }
 
-// ----------------------------------------------------------------
-// RENDERIZAR BOTON + CONTADORES (actualizacion parcial del DOM)
-// ----------------------------------------------------------------
 function renderProfileFollowState(uid) {
   const wrap = document.getElementById('follow-btn-wrap');
   if (wrap) {
@@ -121,13 +109,17 @@ function renderFollowCounts(uid) {
 }
 
 async function loadProfileCounts(uid) {
-  if (S.profileCounts[uid]) return;
+  // No cachear si ya existe Y los contadores son > 0 (para evitar que 0 quede cacheado para siempre)
+  const cached = S.profileCounts[uid];
+  if (cached && (cached.followers > 0 || cached.following > 0)) return;
+
+  // Intentar leer columnas desnormalizadas primero (más rápido)
   try {
     const { data } = await db.from('profiles')
       .select('followers_count, following_count')
       .eq('id', uid)
       .single();
-    if (data) {
+    if (data && (data.followers_count > 0 || data.following_count > 0)) {
       S.profileCounts[uid] = {
         followers: data.followers_count || 0,
         following: data.following_count || 0,
@@ -136,16 +128,21 @@ async function loadProfileCounts(uid) {
     }
   } catch(e) { /* columnas aun no existen, usar fallback */ }
 
-  // Fallback: contar directo desde la tabla follows
+  // Fallback confiable: contar filas directamente desde la tabla follows
+  // Usamos fetch directo al endpoint REST para evitar problemas con el proxy PostgREST
   try {
-    const [resA, resB] = await Promise.all([
-      db.from('follows').select('id', { count:'exact', head:true }).eq('following_id', uid),
-      db.from('follows').select('id', { count:'exact', head:true }).eq('follower_id',  uid),
-    ]);
-    S.profileCounts[uid] = {
-      followers: resA.count || 0,
-      following: resB.count || 0,
+    const headers = {
+      'apikey': window._sigiloSupabaseAnonKey || '',
+      'Authorization': `Bearer ${window._sigiloSupabaseAnonKey || ''}`,
     };
+    const base = window._sigiloSupabaseUrl || '';
+    const [resA, resB] = await Promise.all([
+      fetch(`${base}/rest/v1/follows?following_id=eq.${encodeURIComponent(uid)}&select=id`, { headers })
+        .then(r => r.json()).then(d => Array.isArray(d) ? d.length : 0).catch(() => 0),
+      fetch(`${base}/rest/v1/follows?follower_id=eq.${encodeURIComponent(uid)}&select=id`, { headers })
+        .then(r => r.json()).then(d => Array.isArray(d) ? d.length : 0).catch(() => 0),
+    ]);
+    S.profileCounts[uid] = { followers: resA, following: resB };
   } catch(e2) {
     S.profileCounts[uid] = { followers: 0, following: 0 };
   }
@@ -574,14 +571,13 @@ window.rprofile = function() {
   const uid = S.puid;
   const own = uid === S.me?.id;
 
-  // Cargar contadores en background si no estan en cache
-  if (!S.profileCounts[uid]) {
-    loadProfileCounts(uid).then(() => {
-      const safeUid = uid.replace(/-/g,'_');
-      const countsEl = document.getElementById('follow-counts-' + safeUid);
-      if (countsEl) countsEl.outerHTML = renderFollowCounts(uid);
-    });
-  }
+  // Siempre recargar contadores al visitar un perfil (evita que 0 quede cacheado)
+  delete S.profileCounts[uid];
+  loadProfileCounts(uid).then(() => {
+    const safeUid = uid.replace(/-/g,'_');
+    const countsEl = document.getElementById('follow-counts-' + safeUid);
+    if (countsEl) countsEl.outerHTML = renderFollowCounts(uid);
+  });
 
   // Siempre mostrar contadores. Boton seguir solo en ajenos.
   const isFollowing = !own && S.followingIds.has(uid);
