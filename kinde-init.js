@@ -41,23 +41,55 @@ function kindeUserToSupabase(user) {
   };
 }
 
+const SIGILO_USER_KEY = 'sigilo_kinde_user';
+
+function saveUserLocally(user) {
+  try { if (user) localStorage.setItem(SIGILO_USER_KEY, JSON.stringify(user)); } catch(e) {}
+}
+function loadUserLocally() {
+  try { const s = localStorage.getItem(SIGILO_USER_KEY); return s ? JSON.parse(s) : null; } catch(e) { return null; }
+}
+function clearUserLocally() {
+  try { localStorage.removeItem(SIGILO_USER_KEY); } catch(e) {}
+}
+
 function makeAuthAdapter(kinde) {
 
   async function getSession() {
     try {
       const isAuth = await kinde.isAuthenticated();
-      if (!isAuth) return { data: { session: null }, error: null };
-      const user  = await kinde.getUser();
-      const token = await kinde.getToken();
-      return {
-        data: {
-          session: {
-            user: kindeUserToSupabase(user),
-            access_token: token,
+
+      if (isAuth) {
+        // Sesion activa: obtener usuario de Kinde
+        let user = kinde.getUser();
+        if (!user) user = loadUserLocally();
+        if (!user) return { data: { session: null }, error: null };
+        saveUserLocally(user);
+        const token = await kinde.getToken();
+        return {
+          data: { session: { user: kindeUserToSupabase(user), access_token: token } },
+          error: null,
+        };
+      }
+
+      // Kinde no tiene token en memoria — intentar recuperar con refresh_token de localStorage
+      const cachedUser = loadUserLocally();
+      if (cachedUser) {
+        try {
+          const token = await kinde.getToken(); // dispara refresh internamente con kinde_refresh_token
+          if (token) {
+            const freshUser = kinde.getUser() || cachedUser;
+            saveUserLocally(freshUser);
+            return {
+              data: { session: { user: kindeUserToSupabase(freshUser), access_token: token } },
+              error: null,
+            };
           }
-        },
-        error: null,
-      };
+        } catch(e) {}
+        clearUserLocally();
+      }
+
+      return { data: { session: null }, error: null };
     } catch (e) {
       return { data: { session: null }, error: { message: e.message } };
     }
@@ -84,6 +116,7 @@ function makeAuthAdapter(kinde) {
 
   async function signOut() {
     try { await kinde.logout(); } catch (e) {}
+    clearUserLocally();
     return { error: null };
   }
 
