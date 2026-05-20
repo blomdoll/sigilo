@@ -296,6 +296,28 @@ async function boot() {
   const app = document.getElementById('app');
   app.style.display = 'flex'; app.style.flexDirection = 'column'; app.style.minHeight = '100%';
 
+  // ── Banner de migración: mostrar si el perfil viene de UUID viejo (sin kp_) ──
+  // Se muestra solo una vez hasta que la migración automática corra
+  try {
+    if (S.me && S.me.id && S.me.id.startsWith('kp_')) {
+      const { data: perfil } = await db.from('profiles')
+        .select('avatar_url, bio, display_name')
+        .eq('id', S.me.id)
+        .maybeSingle();
+      const perfilVacio = !perfil || (!perfil.avatar_url && !perfil.bio && !perfil.display_name);
+      const yaVioAviso = sessionStorage.getItem('sigilo_migaviso');
+      if (perfilVacio && !yaVioAviso) {
+        sessionStorage.setItem('sigilo_migaviso', '1');
+        const banner = document.createElement('div');
+        banner.id = 'migBanner';
+        banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:var(--w1,#2a2a2a);color:var(--tx1,#eee);padding:.75rem 1.2rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;font-size:.85rem;border-bottom:1px solid var(--w3,#444);';
+        banner.innerHTML = `<span>✦ Migramos a un nuevo sistema. Si tenías cuenta antes, <b>tu perfil, posts y seguidores se restaurarán automáticamente</b> al iniciar sesión.</span><button onclick="document.getElementById('migBanner').remove()" style="background:none;border:1px solid var(--w3,#555);color:inherit;padding:.3rem .8rem;border-radius:6px;cursor:pointer;white-space:nowrap;font-size:.8rem;">entendido</button>`;
+        document.body.prepend(banner);
+      }
+    }
+  } catch(e) {}
+  // ───────────────────────────────────────────────────────────────────────────
+
   try {
     if (!history.state) {
       history.replaceState({ page: 'feed', puid: null, ptab: 'posts' }, '', window.location.pathname);
@@ -988,6 +1010,16 @@ function saveNavState() {
 // Manejar el botón atrás / adelante del navegador
 window.addEventListener('popstate', (e) => {
   const state = e.state;
+  if (!state) return;
+  // Si S.me aún no está listo (sesión restaurando), guardar estado para procesarlo en boot
+  if (!S.me) {
+    try { sessionStorage.setItem('sigilo_nav', JSON.stringify(state)); } catch(err) {}
+    return;
+  }
+  applyNavState(state);
+});
+
+function applyNavState(state) {
   if (!state || !S.me) return;
   if (state.page === 'feed') {
     S.page = 'feed'; S.explorePage = false; S.feedTab = 'todos'; S.puid = null; S.menu = null;
@@ -1007,7 +1039,7 @@ window.addEventListener('popstate', (e) => {
   } else if (state.page === 'community') {
     goCommunity();
   }
-});
+}
 
 function gofeed() {
   S.page='feed'; S.explorePage=false; S.communityPage=false; S.feedTab='todos'; S.puid=null; S.menu=null;
