@@ -63,9 +63,11 @@ function makeAuthAdapter(kinde) {
         const user = kinde.getUser();
         if (user) {
           saveUserLocally(user);
-          // No usamos token de Kinde — Supabase usa anon key directamente
+          // Token puede fallar en plan gratuito — no es critico, usamos anon key para Supabase
+          let token = null;
+          try { token = await kinde.getToken(); } catch(e) {}
           return {
-            data: { session: { user: kindeUserToSupabase(user), access_token: null } },
+            data: { session: { user: kindeUserToSupabase(user), access_token: token } },
             error: null,
           };
         }
@@ -128,8 +130,46 @@ function makeAuthAdapter(kinde) {
     return { error: null };
   }
 
-  async function updateUser() {
-    return { data: { user: null }, error: null };
+  async function updateUser({ data: userData } = {}) {
+    try {
+      const isAuth = await kinde.isAuthenticated();
+      if (!isAuth) return { data: null, error: { message: 'No autenticado' } };
+      const user = kinde.getUser();
+      if (!user) return { data: null, error: { message: 'Sin usuario' } };
+
+      if (userData) {
+        const updateBody = {};
+        if (userData.display_name !== undefined) {
+          updateBody.display_name = userData.display_name;
+          updateBody.username     = userData.display_name;
+        }
+        if (userData.bio !== undefined) updateBody.bio = userData.bio;
+
+        if (Object.keys(updateBody).length > 0) {
+          const res = await fetch(
+            `${SUPABASE_URL}/rest/v1/profiles?id=eq.${user.id}`,
+            {
+              method: 'PATCH',
+              headers: {
+                'Content-Type':  'application/json',
+                'apikey':        SUPABASE_ANON_KEY,
+                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                'Prefer':        'return=minimal',
+              },
+              body: JSON.stringify(updateBody),
+            }
+          );
+          if (!res.ok) {
+            const errText = await res.text();
+            return { data: null, error: { message: errText } };
+          }
+        }
+      }
+
+      return { data: { user }, error: null };
+    } catch (e) {
+      return { data: null, error: { message: e.message } };
+    }
   }
 
   function onAuthStateChange() {
