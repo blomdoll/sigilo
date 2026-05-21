@@ -1759,7 +1759,6 @@ function rprofile() {
         ${avEl(user, true, own)} 
       </div>
     </div>
-    <input type="file" id="avup" accept="image/*" style="display:none" onchange="havatar(event)"/>
     <div class="pinfo">
       <div class="pname">${displayName}</div>
       <div class="pbio">${bioDisplay}</div>
@@ -2195,7 +2194,34 @@ async function dcmt(postId, cmtId) {
   }
 }
 
-function upavatar() { document.getElementById('avup').click(); }
+// El input de avatar se crea UNA SOLA VEZ aquí y vive en el body —
+// no dentro del perfil renderizado — para que render() nunca lo destruya.
+// Esto soluciona el bug donde el segundo cambio de avatar no funciona.
+(function initAvatarInput() {
+  if (document.getElementById('avup')) return;
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.id = 'avup';
+  inp.accept = 'image/*';
+  inp.style.display = 'none';
+  inp.addEventListener('change', havatar);
+  document.body.appendChild(inp);
+})();
+
+function upavatar() {
+  let inp = document.getElementById('avup');
+  if (!inp) {
+    inp = document.createElement('input');
+    inp.type = 'file';
+    inp.id = 'avup';
+    inp.accept = 'image/*';
+    inp.style.display = 'none';
+    inp.addEventListener('change', havatar);
+    document.body.appendChild(inp);
+  }
+  inp.value = ''; // reset por si acaso quedó un valor anterior
+  inp.click();
+}
 
 // --- CACHÉ DE URLs FIRMADAS PARA AVATARES ---
 // Evita re-descargar el avatar en cada visita y reduce el egress de Supabase
@@ -2218,7 +2244,8 @@ async function havatar(e) {
   if (f.size > 3 * 1024 * 1024) return toast('la imagen debe pesar menos de 3MB');
 
   toast('subiendo foto...');
-  e.target.value = ''; // limpiar ya para permitir resubir
+  // NO limpiar e.target.value aquí — el reset se hace en upavatar() antes del click
+  // para evitar una carrera entre el reset y el evento change.
 
   try {
     // 1. Subir al Worker de Cloudflare R2
@@ -2242,14 +2269,24 @@ async function havatar(e) {
     if (!publicUrl) return toast('error: el Worker no devolvió una URL');
 
     // 2. Guardar URL en Supabase profiles
+    // IMPORTANTE: Authorization debe usar el access_token del usuario (no el anonKey)
+    // para que las Row Level Security policies de Supabase lo acepten correctamente,
+    // especialmente en móvil donde las policies se verifican más estrictamente.
     const base = window._sigiloSupabaseUrl || '';
     const key  = window._sigiloSupabaseAnonKey || '';
+    let accessToken = key; // fallback al anonKey
+    try {
+      const { data: sessionData } = await db.auth.getSession();
+      if (sessionData?.session?.access_token) {
+        accessToken = sessionData.session.access_token;
+      }
+    } catch(_) {}
     await fetch(`${base}/rest/v1/profiles?id=eq.${encodeURIComponent(S.me.id)}`, {
       method: 'PATCH',
       headers: {
         'Content-Type':  'application/json',
         'apikey':        key,
-        'Authorization': `Bearer ${key}`,
+        'Authorization': `Bearer ${accessToken}`,
         'Prefer':        'return=minimal',
       },
       body: JSON.stringify({ avatar_url: publicUrl }),
