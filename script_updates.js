@@ -1,5 +1,16 @@
 const UPDATES = [
   {
+    version: '1.4',
+    date: '2026-05',
+    label: 'mayo 2026',
+    items: [
+      { icon: '✦', text: 'Sigilo está de vuelta — el sitio volvió a estar en funcionamiento.' },
+      { icon: '✦', text: 'Las fotos de perfil pueden no mostrarse correctamente; si es tu caso, sube una nueva foto y quedará resuelta.' },
+      { icon: '✦', text: 'Reporta cualquier bug al DM de @blomdoll en X.' },
+      { icon: '✦', text: 'Nuevos temas disponibles — explora las opciones de personalización.' },
+    ]
+  },
+  {
     version: '1.3',
     date: '2026-05',
     label: 'mayo 2026',
@@ -42,7 +53,7 @@ const UPDATES = [
 S.updatesOpen = false;
 
 const UPDATES_KEY = 'sigilo_updates_seen';
-const LATEST_VERSION = UPDATES[0]?.version || '1.3';
+const LATEST_VERSION = UPDATES[0]?.version || '1.4';
 
 function _getSeenVersion() {
   try { return localStorage.getItem(UPDATES_KEY) || ''; } catch(e) { return ''; }
