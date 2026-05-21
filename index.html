@@ -15,14 +15,16 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="manifest" href="/site.webmanifest" />
 
-  <!-- Favicon dinámico SVG para la pestaña del navegador -->
   <link id="favicon" rel="icon" type="image/svg+xml" href="">
   <script>
     (function() {
       var THEME_COLORS = {
         durazno:'#C9785A', medianoche:'#8B7CF8', bosque:'#5A8A5C',
         cielo:'#4A86C8', rosa:'#C45C80', ambar:'#C8880A',
-        pizarra:'#5A6E8A', nocturno:'#D4956A'
+        pizarra:'#5A6E8A', nocturno:'#D4956A',
+        lavanda:'#8A5FC8', menta:'#2E9E7A', carbon:'#E8C84A',
+        vino:'#8A1A3A', cobre:'#B05A20', oceano:'#3AB8C8',
+        limon:'#7A9A0A', aurora:'#E870A8'
       };
       function getAccentColor() {
         try { var s=localStorage.getItem('sigilo_theme'); if(s&&THEME_COLORS[s]) return THEME_COLORS[s]; } catch(e){}
@@ -175,8 +177,6 @@
 
   <!-- Notificación toast -->
   <div class="toast" id="toast"></div>
-
-  <!-- Shims para funciones usadas en onclick antes de que script.js (defer) cargue -->
   <script>
     function stab(t) {
       var lf = document.getElementById('lf'), rf = document.getElementById('rf');
@@ -192,21 +192,17 @@
     function login() { if (typeof window._sigiloLogin === 'function') window._sigiloLogin(); }
     function register() { if (typeof window._sigiloRegister === 'function') window._sigiloRegister(); }
   </script>
-  <!-- Kinde auth (ESM — debe cargarse primero como módulo) -->
   <script type="module" src="kinde-init.js"></script>
-  <!-- Script principal (espera evento neon-ready antes de ejecutar boot) -->
   <script src="script.js" defer></script>
   <script src="script_follows.js" defer></script>
   <!-- Actualizaciones -->
   <script src="script_updates.js" defer></script>
   <script>
-    // Conectar el favicon dinámico con el sistema de temas de sigilo
     (function() {
       var _orig = window.applyTheme;
       window.applyTheme = function(themeId) {
         if(_orig) _orig(themeId);
         if(window.updateFavicon) {
-          // Inyectar el color del nuevo tema antes de llamar updateFavicon
           try { localStorage.setItem('sigilo_theme', themeId); } catch(e) {}
           window.updateFavicon();
         }
