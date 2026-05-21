@@ -2265,8 +2265,10 @@ async function havatar(e) {
     }
 
     const result = await uploadRes.json();
-    const publicUrl = result.url;
-    if (!publicUrl) return toast('error: el Worker no devolvió una URL');
+    if (!result.url) return toast('error: el Worker no devolvió una URL');
+    // Cache-buster: el Worker guarda el avatar con el mismo nombre (userId),
+    // así que sin esto el browser sirve la imagen cacheada aunque R2 ya la reemplazó.
+    const publicUrl = result.url.split('?')[0] + '?v=' + Date.now();
 
     // 2. Guardar URL en Supabase profiles
     // IMPORTANTE: Authorization debe usar el access_token del usuario (no el anonKey)
