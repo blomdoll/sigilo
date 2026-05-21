@@ -2175,7 +2175,7 @@ async function havatar(e) {
   if (!f) return;
 
   if (!f.type.startsWith('image/')) return toast('el archivo debe ser una imagen');
-  if (f.size > 5 * 1024 * 1024) return toast('la imagen debe pesar menos de 5MB');
+  if (f.size > 3 * 1024 * 1024) return toast('la imagen debe pesar menos de 3MB');
 
   toast('subiendo foto...');
   e.target.value = ''; // limpiar ya para permitir resubir
@@ -2186,7 +2186,7 @@ async function havatar(e) {
     formData.append('file', f);
     formData.append('userId', S.me.id);
 
-    const uploadRes = await fetch(`${CLOUDFLARE_AVATAR_WORKER}/upload`, {
+    const uploadRes = await fetch(`${CLOUDFLARE_AVATAR_WORKER}`, {
       method: 'POST',
       body: formData,
     });
