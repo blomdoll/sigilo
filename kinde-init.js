@@ -359,20 +359,30 @@ function makeDbProxy(kinde) {
             if (Array.isArray(byName) && byName.length === 1) perfilViejo = byName[0];
           }
 
-          const nuevoEstaVacio = perfilNuevo && !perfilNuevo.avatar_url && !perfilNuevo.bio;
+          // Determinar si el perfil kp_ le faltan datos que el viejo tiene
+          const nuevoSinAvatar = perfilNuevo && !perfilNuevo.avatar_url && perfilViejo?.avatar_url;
+          const nuevoSinBio    = perfilNuevo && !perfilNuevo.bio        && perfilViejo?.bio;
 
-          // CASO A: perfil kp_ vacío + perfil UUID con datos → fusionar
-          if (perfilNuevo && perfilViejo && nuevoEstaVacio) {
-            console.log(`[Sigilo] Fusionando perfil vacío con datos del viejo ${perfilViejo.id}`);
+          // CASO A: perfil kp_ existe + perfil UUID existe → fusionar datos y reasignar todo
+          // Se ejecuta sin importar si el kp_ ya tiene algunos datos, porque los posts
+          // del UUID viejo siempre deben moverse al kp_.
+          if (perfilNuevo && perfilViejo) {
+            console.log(`[Sigilo] Fusionando con perfil viejo ${perfilViejo.id} → ${kindeId}`);
             const oldId = perfilViejo.id;
 
-            await patchProfile(`id=eq.${kindeId}`, {
-              avatar_url:      perfilViejo.avatar_url,
-              bio:             perfilViejo.bio,
-              followers_count: perfilViejo.followers_count,
-              following_count: perfilViejo.following_count,
-              email:           kindeEmail || perfilViejo.email,
-            });
+            // Solo sobreescribir campos que el nuevo NO tiene aún
+            const patchData = { email: kindeEmail || perfilViejo.email };
+            if (nuevoSinAvatar) patchData.avatar_url = perfilViejo.avatar_url;
+            if (nuevoSinBio)    patchData.bio         = perfilViejo.bio;
+            // Si el kp_ no tiene contadores reales, tomar los del viejo
+            if (!perfilNuevo.followers_count && perfilViejo.followers_count)
+              patchData.followers_count = perfilViejo.followers_count;
+            if (!perfilNuevo.following_count && perfilViejo.following_count)
+              patchData.following_count = perfilViejo.following_count;
+
+            await patchProfile(`id=eq.${kindeId}`, patchData);
+
+            // Reasignar todos los contenidos del UUID viejo al kp_
             await patchTable('posts',         `user_id=eq.${oldId}`,      { user_id: kindeId });
             await patchTable('follows',       `follower_id=eq.${oldId}`,  { follower_id: kindeId });
             await patchTable('follows',       `following_id=eq.${oldId}`, { following_id: kindeId });
@@ -383,7 +393,7 @@ function makeDbProxy(kinde) {
             console.log('[Sigilo] Fusión completada ✅');
           }
 
-          // CASO B: solo perfil UUID, sin kp_ → migración completa
+          // CASO B: solo perfil UUID, sin kp_ → migración completa (crear kp_ con datos del viejo)
           else if (!perfilNuevo && perfilViejo) {
             console.log(`[Sigilo] Migrando ID: ${perfilViejo.id} → ${kindeId}`);
             const oldId = perfilViejo.id;
@@ -402,8 +412,8 @@ function makeDbProxy(kinde) {
             console.log('[Sigilo] Migración completa ✅');
           }
 
-          // CASO C: perfil kp_ ya con datos → solo guardar email si falta
-          else if (perfilNuevo && !nuevoEstaVacio) {
+          // CASO C: perfil kp_ ya con datos, sin UUID viejo → solo guardar email si falta
+          else if (perfilNuevo && !perfilViejo) {
             if (kindeEmail && !perfilNuevo.email) {
               await patchProfile(`id=eq.${kindeId}`, { email: kindeEmail });
             }
