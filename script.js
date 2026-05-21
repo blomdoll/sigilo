@@ -52,6 +52,17 @@ const S = {
 };
 window.S = S; // Expone globalmente para script_chat.js y otros módulos
 
+// ── Permisos de dueño ──────────────────────────────────────────────────────
+// El dueño puede eliminar cualquier publicación desde la app.
+// Solo requiere cambio aquí en el cliente; Supabase ya permite DELETE con anonKey
+// (si tus RLS policies lo bloquean, ver nota al pie del archivo).
+const OWNER_EMAIL = 'sageaksnes@gmail.com';
+function isOwner() {
+  const email = S.me?.email || S.me?.user_metadata?.email || '';
+  return email.toLowerCase() === OWNER_EMAIL;
+}
+window.isOwner = isOwner;
+
 const CATS = ['todos', 'decoraciones', 'letras', 'símbolos', 'biografías', 'usernames', 'nombres'];
 
 // Cache para explorar/destacados
@@ -1553,7 +1564,7 @@ function rpost(p) {
         <div class="ptime" data-ts="${p.created_at}">${ago(p.created_at)}</div>
       </div>
       <span class="pbadge">${esc(p.category)}</span>
-      ${own?`<div class="mwrap">
+      ${(own||isOwner())?`<div class="mwrap">
         <button class="dotsbtn${mopen?' open':''}" onclick="tmenu('${p.id}',event)">...</button>
       </div>`:''}
     </div>
@@ -1893,6 +1904,14 @@ function renderPostMenu() {
   const p = findPost(S.menu);
   if (!p) { el.innerHTML=''; return; }
   const { top, right } = S.menuPos;
+  const ownPost = p.user_id === S.me.id;
+  // Si es dueña viendo un post ajeno: solo mostrar opción de eliminar
+  if (!ownPost && isOwner()) {
+    el.innerHTML = `<div class="pmenu" style="position:fixed;top:${top}px;right:${right}px;z-index:9999;min-width:170px">
+      <button class="mi del" onclick="confirmAction('¿Eliminar esta publicación? No se puede deshacer.',()=>dpost(${p.id}))"><i class="fi fi-rr-trash"></i> eliminar</button>
+    </div>`;
+    return;
+  }
   el.innerHTML = `<div class="pmenu" style="position:fixed;top:${top}px;right:${right}px;z-index:9999;min-width:170px">
     <button class="mi" onclick="openEditPost('${p.id}')"><i class="fi fi-rr-edit"></i> editar</button>
     <button class="mi${S.pinnedPosts[S.me.id]===p.id?' pin-active':''}" onclick="pinPost('${p.id}')"><i class="${S.pinnedPosts[S.me.id]===p.id?'fi fi-sr-thumbtack':'fi fi-rr-thumbtack'}"></i> ${S.pinnedPosts[S.me.id]===p.id?'desanclar':'anclar en perfil'}</button>
@@ -2609,7 +2628,7 @@ function rpostExplore(p, badge) {
         <div class="ptime" data-ts="${p.created_at}">${ago(p.created_at)}</div>
       </div>
       <span class="pbadge">${esc(p.category)}</span>${badge}
-      ${own?`<div class="mwrap"><button class="dotsbtn" onclick="tmenu('${p.id}',event)">...</button></div>`:''}
+      ${(own||isOwner())?`<div class="mwrap"><button class="dotsbtn" onclick="tmenu('${p.id}',event)">...</button></div>`:''}
     </div>
     <div class="pcontent">${esc(p.body)}</div>
     <div class="pacts">
