@@ -33,10 +33,13 @@ async function followUser(uid) {
     S.followingIds.add(uid);
     const myName = S.me.user_metadata?.display_name || S.me.email;
     try {
-      await db.from('notifications').insert([{
-        to_uid: uid, from_uid: S.me.id, from_name: myName,
-        type: 'follow', post_id: null, post_body: null, read: false,
-      }]);
+      const _base = window._sigiloSupabaseUrl || '';
+      const _key  = window._sigiloSupabaseAnonKey || '';
+      await fetch(`${_base}/rest/v1/notifications`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': _key, 'Authorization': `Bearer ${_key}`, 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ to_uid: uid, from_uid: S.me.id, from_name: myName, type: 'follow', post_id: null, post_body: null, read: false }),
+      });
     } catch(e) {}
     toast('siguiendo \u2756');
     // Invalidar cache de ambos perfiles (el seguido Y el mio propio)
@@ -148,9 +151,6 @@ async function loadProfileCounts(uid) {
   }
 }
 
-// ----------------------------------------------------------------
-// LISTA DE SEGUIDORES / SIGUIENDO (modal)
-// ----------------------------------------------------------------
 async function openFollowList(uid, type) {
   S.followListModal = { uid, type, title: type === 'followers' ? 'seguidores' : 'siguiendo', list: null, profileUid: uid };
   renderFollowListModal();
@@ -315,10 +315,13 @@ async function flToggleFollow(evt, uid, doFollow) {
       S.followingIds.add(uid);
       const myName = S.me.user_metadata?.display_name || S.me.email;
       try {
-        await db.from('notifications').insert([{
-          to_uid: uid, from_uid: S.me.id, from_name: myName,
-          type: 'follow', post_id: null, post_body: null, read: false,
-        }]);
+        const _base = window._sigiloSupabaseUrl || '';
+        const _key  = window._sigiloSupabaseAnonKey || '';
+        await fetch(`${_base}/rest/v1/notifications`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': _key, 'Authorization': `Bearer ${_key}`, 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ to_uid: uid, from_uid: S.me.id, from_name: myName, type: 'follow', post_id: null, post_body: null, read: false }),
+        });
       } catch(e) {}
       delete S.profileCounts[uid];
       delete S.profileCounts[S.me.id];
@@ -356,9 +359,6 @@ async function flToggleFollow(evt, uid, doFollow) {
 }
 window.flToggleFollow = flToggleFollow;
 
-// ----------------------------------------------------------------
-// FEED "SIGUIENDO"
-// ----------------------------------------------------------------
 async function fetchFollowingFeed() {
   if (S.followingIds.size === 0) {
     S.followingPosts = [];
@@ -421,9 +421,6 @@ async function fetchFollowingFeed() {
   renderFeedFollowing();
 }
 
-// ----------------------------------------------------------------
-// RENDER DEL FEED CON TABS
-// ----------------------------------------------------------------
 function rfeedWithTabs() {
   const composeCat = S.composeCat || CATS[1];
   const activeTab = S.followTab || S.feedTab || 'todos';
@@ -510,9 +507,6 @@ function renderFeedFollowing() {
   attachTextareaResize();
 }
 
-// ----------------------------------------------------------------
-// TAB SWITCH
-// ----------------------------------------------------------------
 function setFeedTab(tab) {
   S.followTab = tab;
   S.feedTab = tab; // mantener ambos en sync (script.js usa feedTab, script_follows usa followTab)
@@ -539,9 +533,6 @@ function setFeedTab(tab) {
   }
 }
 
-// ----------------------------------------------------------------
-// HELPER: inyectar HTML despues de .pbio usando DOM (sin regex fragil)
-// ----------------------------------------------------------------
 function injectAfterBio(html, insertHtml) {
   const tmp = document.createElement('div');
   tmp.innerHTML = html;
@@ -559,11 +550,6 @@ function injectAfterBio(html, insertHtml) {
   return tmp.innerHTML;
 }
 
-// ----------------------------------------------------------------
-// PATCH: rprofile
-// Muestra contadores en perfil propio Y ajeno.
-// Muestra boton seguir solo en perfiles ajenos.
-// ----------------------------------------------------------------
 const _origRprofile = rprofile;
 window.rprofile = function() {
   let html = _origRprofile();
@@ -571,7 +557,6 @@ window.rprofile = function() {
   const uid = S.puid;
   const own = uid === S.me?.id;
 
-  // Siempre recargar contadores al visitar un perfil (evita que 0 quede cacheado)
   delete S.profileCounts[uid];
   loadProfileCounts(uid).then(() => {
     const safeUid = uid.replace(/-/g,'_');
@@ -579,7 +564,6 @@ window.rprofile = function() {
     if (countsEl) countsEl.outerHTML = renderFollowCounts(uid);
   });
 
-  // Siempre mostrar contadores. Boton seguir solo en ajenos.
   const isFollowing = !own && S.followingIds.has(uid);
   const followHtml = `${renderFollowCounts(uid)}${own ? '' : `<div id="follow-btn-wrap">${renderFollowBtn(uid, isFollowing)}</div>`}`;
 
@@ -587,27 +571,18 @@ window.rprofile = function() {
   return html;
 };
 
-// ----------------------------------------------------------------
-// PATCH: rfeed — tabs
-// ----------------------------------------------------------------
 const _origRfeed = rfeed;
 window.rfeed = function() {
   if (S.page === 'settings') return rsettings();
   return rfeedWithTabs();
 };
 
-// ----------------------------------------------------------------
-// PATCH: render — incluir renderFollowListModal
-// ----------------------------------------------------------------
 const _origRenderForFollows = render;
 window.render = function() {
   _origRenderForFollows();
   renderFollowListModal();
 };
 
-// ----------------------------------------------------------------
-// PATCH: renderNotifPanel — notif de nuevo seguidor
-// ----------------------------------------------------------------
 const _origRenderNotifPanel = renderNotifPanel;
 window.renderNotifPanel = function() {
   let el = document.getElementById('notifPanel');
@@ -656,25 +631,18 @@ window.renderNotifPanel = function() {
   </div>`;
 };
 
-// ----------------------------------------------------------------
-// INICIALIZAR al hacer boot
-// ----------------------------------------------------------------
 const _origBoot = boot;
 window.boot = function() {
   _origBoot();
   loadFollowingIds();
 };
 
-// Resetear followTab junto con feedTab cuando se va al feed
 const _origGofeedFollows = gofeed;
 window.gofeed = function() {
   S.followTab = 'todos';
   _origGofeedFollows();
 };
 
-// ----------------------------------------------------------------
-// EXPOSE
-// ----------------------------------------------------------------
 window.followUser            = followUser;
 window.unfollowUser          = unfollowUser;
 window.setFeedTab            = setFeedTab;
