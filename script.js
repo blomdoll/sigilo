@@ -657,7 +657,7 @@ async function logout() {
   S.me = null; S.notifs = []; S.notifOpen = false;
   document.getElementById('app').style.display = 'none';
   document.getElementById('auth').style.display = 'flex';
-  document.getElementById('lu').value = ''; document.getElementById('lp').value = '';
+  document.getElementById('lu').value = '';
   stab('login');
   // Limpiar historial para que atrás no vuelva a una página protegida
   try { history.replaceState(null, '', window.location.pathname); } catch(e) {}
@@ -2354,11 +2354,11 @@ window._sigiloRegister = window.register;
 
 // Enter para enviar formularios de auth
 document.addEventListener('DOMContentLoaded', () => {
-  ['lu','lp'].forEach(id => {
+  ['lu'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') window.login(); });
   });
-  ['ru','re','rp'].forEach(id => {
+  ['ru','re'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') window.register(); });
   });
