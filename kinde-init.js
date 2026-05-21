@@ -3,9 +3,11 @@ const KINDE_CLIENT_ID   = '868889eecb5d4b71bc630f2798cf5d0e';
 
 const SUPABASE_URL      = 'https://trkfwxxxeethqnqedxfk.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRya2Z3eHh4ZWV0aHFucWVkeGZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NTA0MTQsImV4cCI6MjA5NDUyNjQxNH0._gxl70CEc3MNVEZVOAX5jQDrvJAuFINHYhPa7Gtbstw';
-
+// Exponer para que otros scripts puedan hacer fetch directo al REST API
 window._sigiloSupabaseUrl      = SUPABASE_URL;
 window._sigiloSupabaseAnonKey  = SUPABASE_ANON_KEY;
+
+// ──────────────────────────────────────────────────────────────
 
 function showFatalError(msg, detail = '') {
   const ld = document.getElementById('loading-screen');
@@ -209,24 +211,34 @@ function makeDbProxy(kinde) {
     return _pgClient;
   }
 
+  // makeChain: envuelve un QueryBuilder de postgrest-js en un Proxy que permite
+  // encadenar métodos de forma lazy y ejecutar la query al hacer await.
+  // IMPORTANTE: cada llamada a from() crea un chain NUEVO con ops aislados.
   function makeChain(builderPromise) {
-    const ops = [];
+    const ops = []; // ops es local a cada makeChain — no se comparte entre queries
+
+    function buildAndExec() {
+      return builderPromise.then(async initBuilder => {
+        let b = initBuilder;
+        for (const { method, args } of ops) {
+          if (typeof b[method] !== 'function') {
+            throw new Error(`[db proxy] '${method}' no es un método válido`);
+          }
+          b = b[method](...args);
+        }
+        // Si b es un builder (tiene .then), ejecutarlo. Si ya es un resultado, devolverlo.
+        return b;
+      });
+    }
 
     const proxy = new Proxy({}, {
       get(_, prop) {
+        // Intercept thenable para ejecutar la cadena al hacer await
         if (prop === 'then' || prop === 'catch' || prop === 'finally') {
-          const resultPromise = builderPromise.then(async client => {
-            let b = client;
-            for (const { method, args } of ops) {
-              if (typeof b[method] !== 'function') {
-                throw new Error(`[db proxy] método '${method}' no existe en el builder`);
-              }
-              b = b[method](...args);
-            }
-            return b;
-          });
-          return resultPromise[prop].bind(resultPromise);
+          const p = buildAndExec();
+          return p[prop].bind(p);
         }
+        // Cualquier otro método: acumular en ops y devolver el mismo proxy
         return (...args) => {
           ops.push({ method: prop, args });
           return proxy;
@@ -240,6 +252,7 @@ function makeDbProxy(kinde) {
   return {
     auth,
     from(tableName) {
+      // Cada llamada a from() crea un nuevo chain con ops vacíos
       const builderPromise = getPgClient().then(client => client.from(tableName));
       return makeChain(builderPromise);
     }
