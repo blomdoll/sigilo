@@ -1146,6 +1146,46 @@ header { position: relative; }
   --w1:#D4956A;--w2:#F0B88A;--w3:#3A2618;--w4:#2A1C12;
   --tx:#F0E8DE;--tx2:#C0A080;--tx3:#806040;--bd:#3A2A1E;
 }
+[data-theme="lavanda"] {
+  --bg:#F5F0FB;--surface:#FAF7FE;--s2:#EDE5F8;
+  --w1:#8A5FC8;--w2:#5A2E9E;--w3:#D4B8F0;--w4:#EAD8FA;
+  --tx:#1E0A3A;--tx2:#5A3A8A;--tx3:#9070C0;--bd:#D0B8EC;
+}
+[data-theme="menta"] {
+  --bg:#F0FAF6;--surface:#F6FEFB;--s2:#E0F5EC;
+  --w1:#2E9E7A;--w2:#0A6E50;--w3:#9EDED0;--w4:#C8F0E8;
+  --tx:#092418;--tx2:#1A6048;--tx3:#508A78;--bd:#A0D8CC;
+}
+[data-theme="carbon"] {
+  --bg:#111318;--surface:#1A1D24;--s2:#22262E;
+  --w1:#E8C84A;--w2:#FFE070;--w3:#2E2A14;--w4:#201E0C;
+  --tx:#F5F0E0;--tx2:#C0B870;--tx3:#807840;--bd:#2E2C1E;
+}
+[data-theme="vino"] {
+  --bg:#FAF0F2;--surface:#FEF5F7;--s2:#F5E0E6;
+  --w1:#8A1A3A;--w2:#620A28;--w3:#E8AABB;--w4:#F8D8E0;
+  --tx:#280810;--tx2:#7A2A44;--tx3:#A86070;--bd:#E0B0C0;
+}
+[data-theme="cobre"] {
+  --bg:#FAF2EC;--surface:#FEF8F4;--s2:#F5E6D8;
+  --w1:#B05A20;--w2:#7A3000;--w3:#E8C4A0;--w4:#F8E2CC;
+  --tx:#260E00;--tx2:#7A4020;--tx3:#A07048;--bd:#E0C0A0;
+}
+[data-theme="oceano"] {
+  --bg:#080E1A;--surface:#0E1628;--s2:#141E32;
+  --w1:#3AB8C8;--w2:#70D8E8;--w3:#0E2A38;--w4:#0A1E2E;
+  --tx:#D0EEF5;--tx2:#70B8C8;--tx3:#406878;--bd:#143040;
+}
+[data-theme="limon"] {
+  --bg:#FAFBF0;--surface:#FEFFF5;--s2:#F0F5D8;
+  --w1:#7A9A0A;--w2:#506800;--w3:#D8E8A0;--w4:#EEF5C8;
+  --tx:#1A2000;--tx2:#4A6010;--tx3:#788A30;--bd:#D0E090;
+}
+[data-theme="aurora"] {
+  --bg:#0A0E18;--surface:#121828;--s2:#1A2038;
+  --w1:#E870A8;--w2:#FF98C8;--w3:#2A1030;--w4:#1A0A20;
+  --tx:#F8E0F0;--tx2:#C070A0;--tx3:#804870;--bd:#2E1040;
+}
 
 /* ================================================================
    PÁGINA DE CONFIGURACIÓN
