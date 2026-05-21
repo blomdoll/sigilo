@@ -379,7 +379,7 @@ async function boot() {
 
 // perfil completo desde supabase al arranque
 db.from('profiles')
-  .select('avatar_url, bio, display_name, username')
+  .select('avatar_url, bio, display_name, username, pinned_post_id')
   .eq('id', S.me.id)
   .then(({ data }) => {
     const d = data?.[0];
@@ -390,6 +390,13 @@ db.from('profiles')
     S.me.user_metadata.display_name = d.display_name || d.username;
     S.me.user_metadata.username     = d.username;
     S._profileBio = d.bio || '';
+    // Sincronizar pin desde Supabase (sobrescribe el localStorage)
+    if (d.pinned_post_id) {
+      S.pinnedPosts[S.me.id] = d.pinned_post_id;
+    } else {
+      delete S.pinnedPosts[S.me.id];
+    }
+    try { localStorage.setItem('sigilo_pinned', JSON.stringify(S.pinnedPosts)); } catch(e) {}
     if (S.page === 'profile' && S.puid === S.me.id) render();
   }).catch(() => {});
 
@@ -529,6 +536,7 @@ db.from('profiles')
   fetchPosts();
   fetchFolders();
   loadNotifs();
+  fetchSavedPosts(); // cargar guardados al arrancar para que persistan entre sesiones
   subscribeCommunityPosts();
   fetchCommunityPosts().then(() => renderCommunityDot());
   startTimestampRefresh();
@@ -1245,6 +1253,7 @@ function goprofile() {
   S.page = 'profile'; S.explorePage = false; S.puid = myId; S.ptab = 'posts'; S.menu = null;
   renderPostMenu(); saveNavState(); document.title = 'perfil · sigilo'; nav(); render();
   fetchProfilePosts(myId);
+  fetchSavedPosts(); // refrescar guardados cada vez que el usuario entra a su perfil
   if (!S.me.user_metadata?.bio && !S._profileBio) {
     db.from('profiles').select('bio').eq('id', myId).single().then(({ data }) => {
       if (data?.bio) { S._profileBio = data.bio; if (S.page === 'profile' && S.puid === myId) render(); }
@@ -2643,33 +2652,63 @@ function rpostExplore(p, badge) {
 
 // ======== FEATURE 2: ANCLAR POSTS EN PERFIL ========
 
-function loadPinnedPosts() {
+async function loadPinnedPosts() {
+  // Intentar cargar desde localStorage como caché inmediata (evita flash vacío)
   try {
-    const saved = JSON.parse(localStorage.getItem('sigilo_pinned') || '{}');
-    S.pinnedPosts = saved;
+    const cached = JSON.parse(localStorage.getItem('sigilo_pinned') || '{}');
+    S.pinnedPosts = cached;
   } catch(e) { S.pinnedPosts = {}; }
+
+  // Luego sincronizar desde Supabase (fuente de verdad — persiste entre dispositivos)
+  if (!S.me) return;
+  try {
+    const { data } = await db.from('profiles')
+      .select('pinned_post_id')
+      .eq('id', S.me.id)
+      .maybeSingle();
+    if (data?.pinned_post_id) {
+      S.pinnedPosts[S.me.id] = data.pinned_post_id;
+    } else {
+      delete S.pinnedPosts[S.me.id];
+    }
+    // Actualizar caché local con el valor de Supabase
+    try { localStorage.setItem('sigilo_pinned', JSON.stringify(S.pinnedPosts)); } catch(e) {}
+    // Re-renderizar si estamos en el perfil propio para reflejar el pin correcto
+    if (S.page === 'profile' && S.puid === S.me.id) render();
+  } catch(e) { /* si falla red, el caché local ya está aplicado */ }
 }
 
-function savePinnedPostsToStorage() {
-  try { localStorage.setItem('sigilo_pinned', JSON.stringify(S.pinnedPosts)); } catch(e) {}
-}
-
-function pinPost(postId) {
+async function pinPost(postId) {
   postId = isNaN(postId)?postId:Number(postId);
   const p = findPost(postId); if(!p) return;
   if (p.user_id !== S.me.id) return;
+
   const uid_key = S.me.id;
-  if (S.pinnedPosts[uid_key] === postId) {
+  const isCurrentlyPinned = S.pinnedPosts[uid_key] === postId;
+
+  // Actualizar estado local inmediatamente (UX instantánea)
+  if (isCurrentlyPinned) {
     delete S.pinnedPosts[uid_key];
     toast('publicación desanclada');
   } else {
     S.pinnedPosts[uid_key] = postId;
     toast('publicación anclada ✦');
   }
-  savePinnedPostsToStorage();
+  try { localStorage.setItem('sigilo_pinned', JSON.stringify(S.pinnedPosts)); } catch(e) {}
   S.menu = null;
   renderPostMenu();
   render();
+
+  // Persistir en Supabase para que sobreviva entre sesiones y dispositivos
+  try {
+    const newPinValue = isCurrentlyPinned ? null : postId;
+    await db.from('profiles')
+      .update({ pinned_post_id: newPinValue })
+      .eq('id', S.me.id);
+  } catch(e) {
+    console.error('[pinPost] Error al guardar en Supabase:', e);
+    toast('anclado localmente (sin conexión)');
+  }
 }
 
 // ======== FEATURE 3: LIKES EN COMENTARIOS ========
