@@ -557,12 +557,22 @@ window.rprofile = function() {
   const uid = S.puid;
   const own = uid === S.me?.id;
 
-  delete S.profileCounts[uid];
-  loadProfileCounts(uid).then(() => {
-    const safeUid = uid.replace(/-/g,'_');
-    const countsEl = document.getElementById('follow-counts-' + safeUid);
-    if (countsEl) countsEl.outerHTML = renderFollowCounts(uid);
-  });
+  // Solo invalidar caché si el perfil cambió (seguir/dejar de seguir),
+  // NO en cada render — evita el flicker de "0 seguidores"
+  if (!S.profileCounts[uid]) {
+    loadProfileCounts(uid).then(() => {
+      const safeUid = uid.replace(/-/g,'_');
+      const countsEl = document.getElementById('follow-counts-' + safeUid);
+      if (countsEl) countsEl.outerHTML = renderFollowCounts(uid);
+    });
+  } else {
+    // Actualizar contadores ya cargados sin fetch extra
+    setTimeout(() => {
+      const safeUid = uid.replace(/-/g,'_');
+      const countsEl = document.getElementById('follow-counts-' + safeUid);
+      if (countsEl) countsEl.outerHTML = renderFollowCounts(uid);
+    }, 0);
+  }
 
   const isFollowing = !own && S.followingIds.has(uid);
   const followHtml = `${renderFollowCounts(uid)}${own ? '' : `<div id="follow-btn-wrap">${renderFollowBtn(uid, isFollowing)}</div>`}`;
