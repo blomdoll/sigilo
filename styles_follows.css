@@ -273,3 +273,9 @@
   align-items: center;
   gap: .6rem;
 }
+
+/* ---- Feed tabs reposicionados: ancho completo como la caja ---- */
+.feed-tabs {
+  max-width: 100%;
+  margin-bottom: .75rem;
+}
