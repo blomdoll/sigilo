@@ -453,8 +453,7 @@ function rfeedWithTabs() {
     <div class="explore-banner-arrow"><i class="fi fi-rr-angle-right"></i></div>
   </div>
   <div class="feed-tabs">
-    <button class="feed-tab${activeTab!=='siguiendo'&&activeTab!=='explorar'&&activeTab!=='comunidad'?' on':''}" onclick="setFeedTab('todos')">\u2756 todos</button>
-    <button class="feed-tab${activeTab==='comunidad'?' on':''}" onclick="setFeedTab('comunidad')">comunidad</button>
+    <button class="feed-tab${activeTab!=='siguiendo'&&activeTab!=='explorar'?' on':''}" onclick="setFeedTab('todos')">\u2756 todos</button>
     <button class="feed-tab${activeTab==='siguiendo'?' on':''}" onclick="setFeedTab('siguiendo')">siguiendo</button>
   </div>`;
 
