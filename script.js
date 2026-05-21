@@ -2,9 +2,8 @@ const db = new Proxy({}, {
   get(_, prop) {
     if (!window.db) {
       console.warn('[Sigilo] db aún no está listo. ¿Se llamó antes de neon-ready?');
-      // Devolver un objeto que absorba llamadas encadenadas sin romper
       const noop = () => noop;
-      noop.then = undefined; // no es thenable
+      noop.then = undefined;
       return noop;
     }
     const val = window.db[prop];
@@ -43,7 +42,7 @@ const S = {
   loading: false, // guard para evitar fetchPosts simultáneos
   theme: 'durazno', // tema activo
   pinnedPosts: {}, // { userId: postId } — un post anclado por usuario
-  explorePage: false, // si estamos en la página explorar
+  explorePage: false, // página explorar
   feedTab: 'todos', // tab activa en el feed: 'todos' | 'explorar' | 'siguiendo'
   communityPage: false, // si estamos en la sección de comunidad
   communityPosts: [], // posts de comunidad
@@ -576,25 +575,39 @@ async function fetchPosts(reset = true) {
 
 async function fetchProfilePosts(userId) {
   try {
-    const { data, error } = await db.from('posts')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
-    if (error || !data) return;
-    // Mezclar con S.posts sin duplicar
+    const base = window._sigiloSupabaseUrl || '';
+    const key  = window._sigiloSupabaseAnonKey || '';
+    const res  = await fetch(
+      `${base}/rest/v1/posts?user_id=eq.${encodeURIComponent(userId)}&order=created_at.desc&limit=50`,
+      { headers: { 'apikey': key, 'Authorization': `Bearer ${key}`, 'Accept': 'application/json' } }
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (!Array.isArray(data)) return;
+
+    const mapped = data.map(p => ({
+      ...p,
+      likes: Array.isArray(p.likes) ? p.likes : [],
+      cmts:  Array.isArray(p.cmts)  ? p.cmts  : [],
+      saved: Array.isArray(p.saved) ? p.saved : [],
+      t: p.created_at
+    }));
+
+    // Guardar posts del perfil en S.profilePosts (separado de S.posts del feed)
+    // para NO contaminar el feed con posts de perfiles visitados
+    S.profilePosts = S.profilePosts || {};
+    S.profilePosts[userId] = mapped;
+
+    // También mezclar en S.posts SIN reemplazar los que ya existen
+    // (necesario para que findPost() funcione en likes/comentarios)
     const existingIds = new Set(S.posts.map(p => p.id));
-    const newPosts = data
-      .map(p => ({
-        ...p,
-        likes: Array.isArray(p.likes) ? p.likes : [],
-        cmts: Array.isArray(p.cmts) ? p.cmts : [],
-        saved: Array.isArray(p.saved) ? p.saved : [],
-        t: p.created_at
-      }))
-      .filter(p => !existingIds.has(p.id));
-    S.posts = [...newPosts, ...S.posts].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    const nuevos = mapped.filter(p => !existingIds.has(p.id));
+    if (nuevos.length > 0) S.posts.push(...nuevos);
+
     if (S.page === 'profile' && S.puid === userId) render();
-  } catch(e) {}
+  } catch(e) {
+    console.error('[fetchProfilePosts] error:', e);
+  }
 }
 window.fetchProfilePosts = fetchProfilePosts;
 
@@ -781,17 +794,31 @@ function unsubscribeNotifs() {
 }
 
 async function saveNotif(toUid, type, fromName, postId, postBody) {
+  if (!toUid || !S.me?.id) return;
   try {
-    await db.from('notifications').insert([{
-      to_uid: toUid,
-      from_uid: S.me.id,
-      from_name: fromName,
-      type,
-      post_id: String(postId),
-      post_body: (postBody || '').slice(0, 120),
-      read: false,
-    }]);
-  } catch(e) {}
+    const base = window._sigiloSupabaseUrl || '';
+    const key  = window._sigiloSupabaseAnonKey || '';
+    await fetch(`${base}/rest/v1/notifications`, {
+      method: 'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'apikey':        key,
+        'Authorization': `Bearer ${key}`,
+        'Prefer':        'return=minimal',
+      },
+      body: JSON.stringify({
+        to_uid:    toUid,
+        from_uid:  S.me.id,
+        from_name: fromName,
+        type,
+        post_id:   postId ? String(postId) : null,
+        post_body: (postBody || '').slice(0, 120),
+        read:      false,
+      }),
+    });
+  } catch(e) {
+    console.error('[saveNotif] error:', e);
+  }
 }
 
 function renderNotifBadge() {
@@ -1175,38 +1202,37 @@ function goprofile() {
 }
 async function vprof(id) {
   S.page='profile'; S.explorePage=false; S.puid=id; S.ptab='posts'; S.menu=null; saveNavState(); document.title='perfil · sigilo'; nav();
-  // Render inmediato con lo que hay (puede estar vacío → se ve "cargando...")
+  // Render inmediato con lo que hay (puede estar vacío → muestra "cargando...")
   render();
-  // Para perfiles ajenos: re-fetchear si los datos tienen más de 10 min o no existen
+
+  // Para perfiles ajenos: siempre fetchear datos frescos de Supabase via REST directo
+  // (evita problemas con el proxy PostgREST que a veces falla silenciosamente)
   if (id !== S.me.id) {
-    const cached = S.users.find(u => u.id === id);
-    const stale = !cached || !cached._ts || (Date.now() - cached._ts) > 10 * 60 * 1000;
-    if (stale) {
-      try {
-        const { data } = await db.from('profiles')
-          .select('id,username,display_name,avatar_url,avatar_path,bio')
-          .eq('id', id).single();
-        if (data) {
-          // Si tiene avatar_path, usar URL del caché firmado (o generarla fresca)
-          let avatarUrl = data.avatar_url;
-          if (data.avatar_path) {
-            const signed = await getSignedAvatarUrl(data.id, data.avatar_path);
-            if (signed) avatarUrl = signed;
-          }
-          const profile = {
-            id: data.id,
-            username: data.display_name || data.username,
-            display_name: data.display_name || data.username,
-            avatar_url: avatarUrl,
-            bio: data.bio || '',
-            _ts: Date.now()
-          };
-          const existing = S.users.findIndex(u => u.id === id);
-          if (existing > -1) S.users[existing] = profile; else S.users.push(profile);
-          // Re-render para mostrar bio y avatar recién cargados
-          if (S.page === 'profile' && S.puid === id) render();
-        }
-      } catch(e) {}
+    try {
+      const base = window._sigiloSupabaseUrl || '';
+      const key  = window._sigiloSupabaseAnonKey || '';
+      const res  = await fetch(
+        `${base}/rest/v1/profiles?id=eq.${encodeURIComponent(id)}&select=id,username,display_name,avatar_url,bio&limit=1`,
+        { headers: { 'apikey': key, 'Authorization': `Bearer ${key}`, 'Accept': 'application/json' } }
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const rows = await res.json();
+      const data = Array.isArray(rows) ? rows[0] : null;
+      if (data) {
+        const profile = {
+          id: data.id,
+          username: data.display_name || data.username || '?',
+          display_name: data.display_name || data.username || '?',
+          avatar_url: data.avatar_url || null,
+          bio: data.bio ?? '',
+          _ts: Date.now()
+        };
+        const existing = S.users.findIndex(u => u.id === id);
+        if (existing > -1) S.users[existing] = profile; else S.users.push(profile);
+        if (S.page === 'profile' && S.puid === id) render();
+      }
+    } catch(e) {
+      console.error('[vprof] Error cargando perfil', id, e);
     }
   }
   fetchProfilePosts(id);
@@ -1676,9 +1702,14 @@ function rprofile() {
     : esc(bioRaw || 'sin biografía aún').replace(/\n/g, '<br/>');
 
   const tab = S.ptab;
-  const myp = S.posts.filter(p => p.user_id === S.puid);
+  // Usar S.profilePosts[puid] si está disponible (evita mezclar con el feed)
+  // Para perfil propio, también incluir S.posts propios (por si se publicó algo en esta sesión)
+  const _profileArr = (S.profilePosts && S.profilePosts[S.puid])
+    ? S.profilePosts[S.puid]
+    : S.posts.filter(p => p.user_id === S.puid);
+  const myp = _profileArr;
   const svd = S.savedPosts || [];
-  const col = S.posts.filter(p => p.user_id === S.puid && p.col);
+  const col = _profileArr.filter(p => p.col);
   const userFolders = S.folders.filter(f => f.user_id === S.puid);
 
   return `
@@ -2137,59 +2168,60 @@ async function getSignedAvatarUrl(userId, path) {
   return null;
 }
 
+const CLOUDFLARE_AVATAR_WORKER = 'https://sigilo-avatar.wenvargasmg.workers.dev';
+
 async function havatar(e) {
   const f = e.target.files?.[0];
   if (!f) return;
 
-  // Validar tipo y tamaño (máx 2MB)
   if (!f.type.startsWith('image/')) return toast('el archivo debe ser una imagen');
-  if (f.size > 2 * 1024 * 1024) return toast('la imagen debe pesar menos de 2MB');
+  if (f.size > 5 * 1024 * 1024) return toast('la imagen debe pesar menos de 5MB');
 
   toast('subiendo foto...');
-
-  const ext = f.name.split('.').pop().toLowerCase() || 'jpg';
-  const path = `avatars/${S.me.id}.${ext}`;
-  const base = window._sigiloSupabaseUrl || '';
-  const key  = window._sigiloSupabaseAnonKey || '';
+  e.target.value = ''; // limpiar ya para permitir resubir
 
   try {
-    // 1. Subir a Supabase Storage (bucket avatars, carpeta pública)
-    const uploadRes = await fetch(`${base}/storage/v1/object/${path}`, {
-      method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${key}`,
-        'apikey': key,
-        'Content-Type': f.type,
-        'x-upsert': 'true',
-      },
-      body: f,
+    // 1. Subir al Worker de Cloudflare R2
+    const formData = new FormData();
+    formData.append('file', f);
+    formData.append('userId', S.me.id);
+
+    const uploadRes = await fetch(`${CLOUDFLARE_AVATAR_WORKER}/upload`, {
+      method: 'POST',
+      body: formData,
     });
 
     if (!uploadRes.ok) {
       const errText = await uploadRes.text();
-      console.error('[havatar] upload error:', errText);
-      return toast('error al subir la foto, intenta de nuevo');
+      console.error('[havatar] Cloudflare error:', errText);
+      return toast('error al subir la foto');
     }
 
-    // 2. Construir URL pública
-    const publicUrl = `${base}/storage/v1/object/public/${path}?t=${Date.now()}`;
+    const result = await uploadRes.json();
+    const publicUrl = result.url;
+    if (!publicUrl) return toast('error: el Worker no devolvió una URL');
 
-    // 3. Actualizar profiles en Supabase
-    await fetch(`${base}/rest/v1/profiles?id=eq.${S.me.id}`, {
+    // 2. Guardar URL en Supabase profiles
+    const base = window._sigiloSupabaseUrl || '';
+    const key  = window._sigiloSupabaseAnonKey || '';
+    await fetch(`${base}/rest/v1/profiles?id=eq.${encodeURIComponent(S.me.id)}`, {
       method: 'PATCH',
       headers: {
-        'Content-Type': 'application/json',
-        'apikey': key,
+        'Content-Type':  'application/json',
+        'apikey':        key,
         'Authorization': `Bearer ${key}`,
-        'Prefer': 'return=minimal',
+        'Prefer':        'return=minimal',
       },
       body: JSON.stringify({ avatar_url: publicUrl }),
     });
 
-    // 4. Actualizar estado local
+    // 3. Actualizar estado local sin recargar
     S.me.user_metadata = S.me.user_metadata || {};
     S.me.user_metadata.avatar_url = publicUrl;
-    S.posts.forEach(p => { if (p.user_id === S.me.id) p.author_av = publicUrl; });
+    // Actualizar en profilePosts y posts para que se refleje en los cards
+    const updatePost = p => { if (p.user_id === S.me.id) p.author_av = publicUrl; };
+    S.posts.forEach(updatePost);
+    if (S.profilePosts?.[S.me.id]) S.profilePosts[S.me.id].forEach(updatePost);
 
     render();
     toast('foto actualizada ✦');
@@ -2197,9 +2229,6 @@ async function havatar(e) {
     console.error('[havatar]', err);
     toast('error al subir la foto');
   }
-
-  // Limpiar el input para permitir volver a subir la misma imagen
-  e.target.value = '';
 }
 
 async function openmod() {
