@@ -145,6 +145,46 @@ const THEMES = [
     name: 'Nocturno',
     bg: '#130E0A', surface: '#1C1410', accent: '#D4956A', accent2: '#3A2618', tx: '#F0E8DE',
   },
+  {
+    id: 'lavanda',
+    name: 'Lavanda',
+    bg: '#F5F0FB', surface: '#FAF7FE', accent: '#8A5FC8', accent2: '#D4B8F0', tx: '#1E0A3A',
+  },
+  {
+    id: 'menta',
+    name: 'Menta',
+    bg: '#F0FAF6', surface: '#F6FEFB', accent: '#2E9E7A', accent2: '#9EDED0', tx: '#092418',
+  },
+  {
+    id: 'carbon',
+    name: 'Carbón',
+    bg: '#111318', surface: '#1A1D24', accent: '#E8C84A', accent2: '#2E2A14', tx: '#F5F0E0',
+  },
+  {
+    id: 'vino',
+    name: 'Vino',
+    bg: '#FAF0F2', surface: '#FEF5F7', accent: '#8A1A3A', accent2: '#E8AABB', tx: '#280810',
+  },
+  {
+    id: 'cobre',
+    name: 'Cobre',
+    bg: '#FAF2EC', surface: '#FEF8F4', accent: '#B05A20', accent2: '#E8C4A0', tx: '#260E00',
+  },
+  {
+    id: 'oceano',
+    name: 'Océano',
+    bg: '#080E1A', surface: '#0E1628', accent: '#3AB8C8', accent2: '#0E2A38', tx: '#D0EEF5',
+  },
+  {
+    id: 'limon',
+    name: 'Limón',
+    bg: '#FAFBF0', surface: '#FEFFF5', accent: '#7A9A0A', accent2: '#D8E8A0', tx: '#1A2000',
+  },
+  {
+    id: 'aurora',
+    name: 'Aurora',
+    bg: '#0A0E18', surface: '#121828', accent: '#E870A8', accent2: '#2A1030', tx: '#F8E0F0',
+  },
 ];
 
 function applyTheme(themeId) {
