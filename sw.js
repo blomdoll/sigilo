@@ -2,6 +2,7 @@ const CACHE_NAME = 'sigilo-v8';
 const assets = [
   '/',
   '/index.html',
+  '/post.html',
   '/styles.css',
   '/script.js',
   '/kinde-init.js',
