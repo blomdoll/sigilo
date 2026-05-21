@@ -1,289 +1,191 @@
-.upd-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(44, 24, 16, .38);
-  z-index: 130;
-  animation: upd-fade-in .18s ease;
+const UPDATES = [
+  {
+    version: '1.4',
+    date: '2026-05',
+    label: 'mayo 2026',
+    items: [
+      { icon: '✦', text: 'Sigilo está de vuelta — el sitio volvió a estar en funcionamiento.' },
+      { icon: '✦', text: 'Las fotos de perfil pueden no mostrarse correctamente; si es tu caso, sube una nueva foto y quedará resuelta.' },
+      { icon: '✦', text: 'Reporta cualquier bug al DM de @blomdoll en X.' },
+    ]
+  },
+  {
+    version: '1.3',
+    date: '2026-05',
+    label: 'mayo 2026',
+    items: [
+      { icon: '✦', text: 'Sección de comunidad — un espacio aparte para iniciar conversaciones, hacer preguntas y discutir temas del sitio.' },
+      { icon: '✦', text: 'Los posts de comunidad son independientes del feed principal y del tab de siguiendo.' },
+    ]
+  },
+  {
+    version: '1.2',
+    date: '2026-05',
+    label: 'mayo 2026',
+    items: [
+      { icon: '✦', text: 'Respuestas a comentarios — responde directamente a cualquier comentario con mención del usuario.' },
+      { icon: '✦', text: 'Compartir publicaciones — botón para copiar el enlace de un post y compartirlo fácilmente.' },
+    ]
+  },
+  {
+    version: '1.1',
+    date: '2026-05',
+    label: 'mayo 2026',
+    items: [
+      { icon: '✦', text: 'Panel de actualizaciones — ahora puedes ver los cambios recientes de sigilo.' },
+      { icon: '✦', text: 'Seguidores mejorados — en la lista de seguidores/siguiendo ahora se muestra quién te sigue de vuelta, con botón para seguirles directamente.' },
+    ]
+  },
+  {
+    version: '1.0',
+    date: '2026-05',
+    label: 'mayo 2026',
+    items: [
+      { icon: '✦', text: 'Sistema de seguir/dejar de seguir con notificaciones en tiempo real.' },
+      { icon: '✦', text: 'Feed "Siguiendo" — tab exclusiva con publicaciones de las cuentas que sigues.' },
+      { icon: '✦', text: 'Likes en comentarios — reacciona a comentarios con corazón.' },
+      { icon: '✦', text: 'Posts anclados — ancla un post favorito en la parte superior de tu perfil.' },
+    ]
+  },
+];
+
+S.updatesOpen = false;
+
+const UPDATES_KEY = 'sigilo_updates_seen';
+const LATEST_VERSION = UPDATES[0]?.version || '1.4';
+
+function _getSeenVersion() {
+  try { return localStorage.getItem(UPDATES_KEY) || ''; } catch(e) { return ''; }
+}
+function _markSeen() {
+  try { localStorage.setItem(UPDATES_KEY, LATEST_VERSION); } catch(e) {}
+}
+function _hasUnseenUpdates() {
+  return _getSeenVersion() !== LATEST_VERSION;
 }
 
-@keyframes upd-fade-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+function openUpdates() {
+  S.updatesOpen = true;
+  _markSeen();
+  _renderUpdatesPanel();   // panel primero
+  _syncAllBadges();        // luego quitar badges
 }
 
-.upd-panel {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: min(360px, 92vw);
-  background: var(--surface);
-  border-left: 1px solid var(--bd);
-  z-index: 131;
-  display: flex;
-  flex-direction: column;
-  box-shadow: -8px 0 32px rgba(44, 24, 16, .14);
-  animation: upd-slide-in .22s cubic-bezier(.34, 1.3, .64, 1);
-  overflow: hidden;
+function closeUpdates() {
+  S.updatesOpen = false;
+  const el = document.getElementById('updatesPanel');
+  if (el) el.innerHTML = '';
 }
 
-@keyframes upd-slide-in {
-  from { transform: translateX(32px); opacity: 0; }
-  to   { transform: translateX(0);    opacity: 1; }
-}
-
-/* ---- Cabecera del panel ---- */
-.upd-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1.1rem 1.25rem .85rem;
-  border-bottom: 1px solid var(--bd);
-  flex-shrink: 0;
-}
-.upd-head-left {
-  display: flex;
-  align-items: center;
-  gap: .5rem;
-}
-.upd-head-icon {
-  font-size: 1rem;
-  color: var(--w1);
-  line-height: 1;
-}
-.upd-head-title {
-  font-family: var(--fd);
-  font-size: 1.1rem;
-  color: var(--tx);
-}
-.upd-sub {
-  font-size: .74rem;
-  color: var(--tx3);
-  padding: .55rem 1.25rem .65rem;
-  border-bottom: 1px solid var(--bd);
-  flex-shrink: 0;
-}
-.upd-close {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: var(--s2);
-  color: var(--tx2);
-  font-size: .82rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  border: none;
-  transition: background .15s, color .15s;
-  flex-shrink: 0;
-}
-.upd-close:hover { background: var(--w4); color: var(--w2); }
-
-/* ---- Cuerpo scrolleable ---- */
-.upd-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: .85rem 1.25rem 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-/* ---- Grupo por versión ---- */
-.upd-group {
-  display: flex;
-  flex-direction: column;
-  gap: .65rem;
-}
-.upd-group-head {
-  display: flex;
-  align-items: center;
-  gap: .55rem;
-}
-.upd-version {
-  font-size: .72rem;
-  font-weight: 600;
-  font-family: var(--fb);
-  color: var(--w1);
-  background: var(--w4);
-  border: 1px solid var(--w3);
-  padding: .15rem .55rem;
-  border-radius: 8px;
-  letter-spacing: .02em;
-}
-.upd-date {
-  font-size: .72rem;
-  color: var(--tx3);
-  letter-spacing: .01em;
-}
-.upd-new-badge {
-  font-size: .65rem;
-  font-weight: 600;
-  font-family: var(--fb);
-  color: #fff;
-  background: var(--w1);
-  padding: .12rem .45rem;
-  border-radius: 8px;
-  letter-spacing: .03em;
-  text-transform: uppercase;
-}
-.upd-group-latest .upd-list {
-  border-left: 2px solid var(--w3);
-  padding-left: .85rem;
-}
-
-/* ---- Lista de items ---- */
-.upd-list {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: .55rem;
-  padding-left: 0;
-}
-.upd-item {
-  display: flex;
-  align-items: flex-start;
-  gap: .55rem;
-}
-.upd-icon {
-  font-size: .75rem;
-  color: var(--w1);
-  flex-shrink: 0;
-  margin-top: .18rem;
-  opacity: .8;
-}
-.upd-text {
-  font-size: .82rem;
-  color: var(--tx2);
-  line-height: 1.55;
-}
-
-/* ================================================================
-   PUNTO ROJO — compartido por escritorio y móvil
-   ================================================================ */
-.upd-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--w1);
-  /* Oculto por defecto — el JS lo muestra cuando hay novedades */
-  display: none;
-  flex-shrink: 0;
-  animation: upd-dot-pulse 2s ease-in-out infinite;
-}
-
-@keyframes upd-dot-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%       { opacity: .6; transform: scale(.85); }
-}
-
-/* ================================================================
-   BOTÓN ESCRITORIO — fixed en el espacio vacío a la izquierda
-   ================================================================ */
-.upd-desktop-btn {
-  /* Oculto en móvil; visible solo en desktop via media query */
-  display: none;
-  position: fixed;
-  /* main centrado con max-width:660px → botón queda a su izquierda */
-  left: max(1rem, calc(50vw - 330px - 120px));
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 10;
-
-  flex-direction: column;
-  align-items: center;
-  gap: .5rem;
-  padding: .9rem .75rem;
-  background: var(--surface);
-  border: 1px solid var(--bd);
-  border-radius: var(--r);
-  color: var(--tx3);
-  cursor: pointer;
-  font-family: var(--fb);
-  box-shadow: 0 2px 12px rgba(44, 24, 16, .07);
-  transition: background .15s, color .15s, border-color .15s, box-shadow .18s;
-}
-.upd-desktop-btn:hover {
-  background: var(--w4);
-  color: var(--w2);
-  border-color: var(--w3);
-  box-shadow: 0 4px 18px rgba(44, 24, 16, .11);
-}
-
-.upd-desktop-icon {
-  font-size: 1.1rem;
-  color: var(--w1);
-  line-height: 1;
-}
-
-.upd-desktop-label {
-  font-size: .7rem;
-  writing-mode: vertical-lr;
-  text-orientation: mixed;
-  transform: rotate(180deg);
-  letter-spacing: .05em;
-  color: inherit;
-  white-space: nowrap;
-}
-
-/* El punto rojo en el botón de escritorio */
-.upd-desktop-dot {
-  /* hereda de .upd-dot: display:none por defecto */
-}
-
-/* Mostrar el botón solo en pantallas anchas */
-@media (min-width: 841px) {
-  .upd-desktop-btn { display: flex; }
-}
-
-/* ================================================================
-   BOTÓN MÓVIL — dentro de .mob-header-actions en el header
-   ================================================================ */
-
-/* El botón usa las clases .upd-mob-btn y .mob-header-btn.
-   mob-header-btn ya tiene display:flex y los estilos base.
-   Solo necesitamos position:relative para el badge y el dot. */
-.upd-mob-btn {
-  position: relative;
-}
-
-/* Punto rojo encima del botón móvil */
-#upd-mob-dot {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--w1);
-  border: 1.5px solid var(--surface);
-  /* Oculto por defecto — JS lo muestra */
-  display: none;
-  pointer-events: none;
-  animation: upd-dot-pulse 2s ease-in-out infinite;
-}
-
-/* ================================================================
-   PANEL EN MÓVIL — sube desde abajo
-   ================================================================ */
-@media (max-width: 640px) {
-  .upd-panel {
-    width: 100%;
-    top: auto;
-    bottom: 62px; /* encima del mob-nav */
-    right: 0;
-    left: 0;
-    max-height: 80vh;
-    border-left: none;
-    border-top: 1px solid var(--bd);
-    border-radius: 18px 18px 0 0;
-    box-shadow: 0 -4px 28px rgba(44, 24, 16, .15);
-    animation: upd-slide-up .22s cubic-bezier(.34, 1.3, .64, 1);
+function _renderUpdatesPanel() {
+  let el = document.getElementById('updatesPanel');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'updatesPanel';
+    document.body.appendChild(el);
   }
 
-  @keyframes upd-slide-up {
-    from { transform: translateY(24px); opacity: 0; }
-    to   { transform: translateY(0);    opacity: 1; }
+  const itemsHtml = UPDATES.map((u, i) => `
+    <div class="upd-group${i === 0 ? ' upd-group-latest' : ''}">
+      <div class="upd-group-head">
+        <span class="upd-version">v${u.version}</span>
+        <span class="upd-date">${u.label}</span>
+        ${i === 0 ? `<span class="upd-new-badge">nuevo</span>` : ''}
+      </div>
+      <ul class="upd-list">
+        ${u.items.map(it => `
+          <li class="upd-item">
+            <span class="upd-icon">${it.icon}</span>
+            <span class="upd-text">${it.text}</span>
+          </li>
+        `).join('')}
+      </ul>
+    </div>
+  `).join('');
+
+  el.innerHTML = `
+    <div class="upd-backdrop" onclick="closeUpdates()"></div>
+    <aside class="upd-panel">
+      <div class="upd-head">
+        <div class="upd-head-left">
+          <span class="upd-head-icon">✦</span>
+          <span class="upd-head-title">actualizaciones</span>
+        </div>
+        <button class="upd-close" onclick="closeUpdates()" aria-label="Cerrar">✕</button>
+      </div>
+      <div class="upd-sub">cambios recientes en sigilo</div>
+      <div class="upd-body">${itemsHtml}</div>
+    </aside>
+  `;
+}
+
+function _ensureDesktopBtn() {
+  if (window.innerWidth <= 640) return;
+  // Verificar que realmente sigue en el DOM (no solo en memoria)
+  if (document.body.contains(document.getElementById('updates-desktop-btn'))) return;
+
+  const btn = document.createElement('button');
+  btn.id = 'updates-desktop-btn';
+  btn.className = 'upd-desktop-btn';
+  btn.title = 'Actualizaciones';
+  btn.setAttribute('aria-label', 'Actualizaciones');
+  btn.onclick = openUpdates;
+  btn.innerHTML = `
+    <span class="upd-desktop-icon">✦</span>
+    <span class="upd-desktop-label">actualizaciones</span>
+    <span class="upd-desktop-dot upd-dot"></span>
+  `;
+  document.body.appendChild(btn);
+}
+
+function _syncAllBadges() {
+  const hasNew = _hasUnseenUpdates();
+
+  // Badge escritorio (span con clase dentro del botón)
+  const desktopDot = document.querySelector('#updates-desktop-btn .upd-desktop-dot');
+  if (desktopDot) {
+    desktopDot.style.display = hasNew ? 'block' : 'none';
+  }
+
+  // Badge móvil (span con id en el header HTML)
+  const mobDot = document.getElementById('upd-mob-dot');
+  if (mobDot) {
+    // Forzar display aunque el padre tenga overflow hidden o display:none
+    mobDot.style.setProperty('display', hasNew ? 'block' : 'none', 'important');
   }
 }
+
+function _updatesInit() {
+  _ensureDesktopBtn();
+  _syncAllBadges();
+
+  window.addEventListener('resize', () => {
+    _ensureDesktopBtn();
+    _syncAllBadges();
+  });
+}
+
+// Ejecutar tan pronto como el DOM esté disponible
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _updatesInit);
+} else {
+  _updatesInit();
+}
+
+(function() {
+  function _patchRender() {
+    if (typeof render !== 'function') { setTimeout(_patchRender, 100); return; }
+    const _orig = render;
+    window.render = function() {
+      _orig.apply(this, arguments);
+      setTimeout(() => {
+        _ensureDesktopBtn();
+        _syncAllBadges();
+      }, 80);
+    };
+  }
+  _patchRender();
+})();
+
+window.openUpdates  = openUpdates;
+window.closeUpdates = closeUpdates;
