@@ -458,11 +458,11 @@ function rfeedWithTabs() {
   </div>`;
 
   if (activeTab === 'siguiendo') {
-    return header + composeCard + tabs + renderFollowingSection();
+    return header + tabs + composeCard + renderFollowingSection();
   }
 
   if (activeTab === 'comunidad') {
-    return header + composeCard + tabs + rCommunitySection();
+    return header + tabs + composeCard + rCommunitySection();
   }
 
   // Tab "todos" (default)
@@ -474,7 +474,7 @@ function rfeedWithTabs() {
       : posts.map(rpost).join('') + `<div id="scroll-sentinel" style="height:1px;margin:1rem 0"></div>`
     }`;
 
-  return header + composeCard + tabs + catsAndPosts;
+  return header + tabs + composeCard + catsAndPosts;
 }
 
 function renderFollowingSection() {
