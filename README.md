@@ -6,9 +6,9 @@ Red social minimalista para compartir arte en texto. Los posts son solo palabras
 
 ---
 
-## ¿Qué hace?
+## ¿Qué es Sigilo?
 
-Sigilo es una comunidad donde los usuarios publican y leen texto puro — poesía, microficción, pensamientos, fragmentos. El foco está en la escritura, no en el engagement.
+Sigilo es una comunidad donde las personas publican y leen texto puro — poesía, microficción, pensamientos, fragmentos. El foco está en la escritura, no en el engagement.
 
 ## Funcionalidades
 
@@ -17,7 +17,8 @@ Sigilo es una comunidad donde los usuarios publican y leen texto puro — poesí
 - Sistema de seguir usuarios y notificaciones
 - Sección de explorar y búsqueda de perfiles
 - Comunidad / sala de chat
-- Página de actualizaciones/changelog
+- Panel de avisos
+- Página de mantenimiento
 - Perfiles personalizables con temas de color (8 opciones)
 - Favicon dinámico que cambia con el tema del usuario
 - PWA instalable en móvil (Service Worker + Web App Manifest)
@@ -27,25 +28,28 @@ Sigilo es una comunidad donde los usuarios publican y leen texto puro — poesí
 ## Tecnologías
 
 - HTML5, CSS3, JavaScript vanilla
-- [Supabase](https://supabase.com) (base de datos, autenticación en tiempo real)
+- [Kinde](https://kinde.com) (autenticación)
+- [Supabase](https://supabase.com) (base de datos y tiempo real)
+- [Cloudflare](https://cloudflare.com) (infraestructura y deploy)
 - Service Worker (caché offline, PWA)
-- Vercel (deploy)
 
 ## Estructura
 
 ```
 sigilo/
-├── index.html              # App principal
-├── post.html               # Vista de post individual
-├── legal.html              # Privacidad y términos
-├── script.js               # Lógica principal (feed, posts, perfil)
-├── script_follows.js       # Sistema de seguimiento y notificaciones
-├── script_updates.js       # Panel de actualizaciones
-├── styles.css              # Estilos principales y sistema de temas
-├── styles_follows.css      # Estilos del sistema de seguimiento
-├── styles_updates.css      # Estilos del panel de actualizaciones
-├── sw.js                   # Service Worker
-└── site.webmanifest        # Configuración PWA
+├── index.html                  # App principal
+├── index_mantenimiento.html    # Página de mantenimiento
+├── post.html                   # Vista de post individual
+├── legal.html                  # Privacidad y términos
+├── script.js                   # Lógica principal (feed, posts, perfil)
+├── kinde-init.js               # Inicialización de Kinde y conexión con Supabase
+├── script_follows.js           # Sistema de seguimiento y notificaciones
+├── script_updates.js           # Panel de avisos
+├── styles.css                  # Estilos principales y sistema de temas
+├── styles_follows.css          # Estilos del sistema de seguimiento
+├── styles_updates.css          # Estilos del panel de avisos
+├── sw.js                       # Service Worker
+└── site.webmanifest            # Configuración PWA
 ```
 
 ## Correr localmente
@@ -56,8 +60,8 @@ cd sigilo
 npx serve .
 ```
 
-> Requiere una instancia de Supabase configurada. Las credenciales están en `script.js`.
+> Requiere una instancia de Supabase configurada y credenciales de Kinde. Ambas se configuran en `kinde-init.js`.
 
 ---
 
-Creado por [@blomdoll](https://github.com/blomdoll)
+Creado por [Wendy Vargas / @blomdoll](https://github.com/blomdoll)
