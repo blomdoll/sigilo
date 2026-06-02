@@ -11,11 +11,11 @@ const db = new Proxy({}, {
   }
 });
 
-let offset = 0; 
+let offset = 0;
 const PAGE_SIZE = 10;
 
 const S = {
-  users: [], 
+  users: [],
   posts: [],
   me: null,
   page: 'feed',
@@ -38,24 +38,20 @@ const S = {
   page_num: 1,
   PAGE_SIZE: 20,
   confirmModal: null,
-  composeCat: null, // categoría seleccionada en compose (null = primera por defecto)
-  loading: false, // guard para evitar fetchPosts simultáneos
-  theme: 'durazno', // tema activo
-  pinnedPosts: {}, // { userId: postId } — un post anclado por usuario
-  explorePage: false, // página explorar
-  feedTab: 'todos', // tab activa en el feed: 'todos' | 'explorar' | 'siguiendo'
-  communityPage: false, // si estamos en la sección de comunidad
-  communityPosts: [], // posts de comunidad
+  composeCat: null,
+  loading: false,
+  theme: 'durazno',
+  pinnedPosts: {},
+  explorePage: false,
+  feedTab: 'todos',
+  communityPage: false,
+  communityPosts: [],
   communityLoading: false,
-  replyTo: {}, // { postId: { cmtId, un } } — comentario al que se responde actualmente
-  savedPosts: [], // posts guardados por el usuario, cargados frescos desde Supabase
+  replyTo: {},
+  savedPosts: [],
 };
-window.S = S; // Expone globalmente para script_chat.js y otros módulos
+window.S = S;
 
-// ── Permisos de dueño ──────────────────────────────────────────────────────
-// El dueño puede eliminar cualquier publicación desde la app.
-// Solo requiere cambio aquí en el cliente; Supabase ya permite DELETE con anonKey
-// (si tus RLS policies lo bloquean, ver nota al pie del archivo).
 const OWNER_EMAIL = 'sageaksnes@gmail.com';
 function isOwner() {
   const email = S.me?.email || S.me?.user_metadata?.email || '';
@@ -65,35 +61,32 @@ window.isOwner = isOwner;
 
 const CATS = ['todos', 'decoraciones', 'letras', 'símbolos', 'biografías', 'usernames', 'nombres'];
 
-// Cache para explorar/destacados
-let _exploreCache = null;
-let _exploreCacheTs = 0;
-const EXPLORE_TTL = 5 * 60 * 1000; // 5 min
+let exploreCache = null;
+let exploreCacheTime = 0;
+const EXPLORE_TTL = 5 * 60 * 1000;
 const MAX_CHARS = 500;
 const uid = () => 'x' + Math.random().toString(36).slice(2);
 
 const ago = ts => {
   if (!ts) return '';
-  
   const normalized = (typeof ts === 'string' && !ts.endsWith('Z') && !ts.includes('+')) ? ts + 'Z' : ts;
-  const d = Date.now() - new Date(normalized).getTime();
-  if (isNaN(d) || d < 0) return 'ahora';
-  if (d < 60000) return 'ahora';
-  if (d < 3600000) return ~~(d / 60000) + 'm';
-  if (d < 86400000) return ~~(d / 3600000) + 'h';
-  if (d < 2592000000) return ~~(d / 86400000) + 'd';
-  return new Date(normalized).toLocaleDateString('es', { day:'numeric', month:'short' });
+  const diff = Date.now() - new Date(normalized).getTime();
+  if (isNaN(diff) || diff < 0) return 'ahora';
+  if (diff < 60000) return 'ahora';
+  if (diff < 3600000) return ~~(diff / 60000) + 'm';
+  if (diff < 86400000) return ~~(diff / 3600000) + 'h';
+  if (diff < 2592000000) return ~~(diff / 86400000) + 'd';
+  return new Date(normalized).toLocaleDateString('es', { day: 'numeric', month: 'short' });
 };
 
-const esc = s => s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
+const esc = s => s ? s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
 const safeId = id => 'p' + String(id).replace(/[^a-zA-Z0-9]/g, '_');
 
-function toast(m, dur=2200) { 
-  const t = document.getElementById('toast'); 
-  if(t) { t.textContent = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), dur); }
+function toast(msg, dur = 2200) {
+  const el = document.getElementById('toast');
+  if (el) { el.textContent = msg; el.classList.add('show'); setTimeout(() => el.classList.remove('show'), dur); }
 }
 
-// --- MODAL DE CONFIRMACION ---
 function confirmAction(msg, onConfirm) {
   S.confirmModal = { msg, onConfirm };
   renderConfirmModal();
@@ -114,88 +107,23 @@ function renderConfirmModal() {
   </div>`;
 }
 
-// --- SISTEMA DE TEMAS ---
 const THEMES = [
-  {
-    id: 'durazno',
-    name: 'Durazno',
-    bg: '#FBF6F0', surface: '#FFF9F4', accent: '#C9785A', accent2: '#E8C5A8', tx: '#2C1810',
-  },
-  {
-    id: 'medianoche',
-    name: 'Medianoche',
-    bg: '#0F0F14', surface: '#16161E', accent: '#8B7CF8', accent2: '#2D2B4E', tx: '#E8E6FF',
-  },
-  {
-    id: 'bosque',
-    name: 'Bosque',
-    bg: '#F2F5EE', surface: '#F8FAF5', accent: '#5A8A5C', accent2: '#B8D4B9', tx: '#1A2E1B',
-  },
-  {
-    id: 'cielo',
-    name: 'Cielo',
-    bg: '#F0F5FB', surface: '#F8FAFE', accent: '#4A86C8', accent2: '#A8C8EE', tx: '#0E2040',
-  },
-  {
-    id: 'rosa',
-    name: 'Rosa',
-    bg: '#FDF0F5', surface: '#FFF5F8', accent: '#C45C80', accent2: '#F0B8CC', tx: '#3A0E22',
-  },
-  {
-    id: 'ambar',
-    name: 'Ámbar',
-    bg: '#FBF5E8', surface: '#FFFBF0', accent: '#C8880A', accent2: '#EED09A', tx: '#2C1C00',
-  },
-  {
-    id: 'pizarra',
-    name: 'Pizarra',
-    bg: '#F2F3F5', surface: '#FAFBFC', accent: '#5A6E8A', accent2: '#B0BED0', tx: '#0A1828',
-  },
-  {
-    id: 'nocturno',
-    name: 'Nocturno',
-    bg: '#130E0A', surface: '#1C1410', accent: '#D4956A', accent2: '#3A2618', tx: '#F0E8DE',
-  },
-  {
-    id: 'lavanda',
-    name: 'Lavanda',
-    bg: '#F5F0FB', surface: '#FAF7FE', accent: '#8A5FC8', accent2: '#D4B8F0', tx: '#1E0A3A',
-  },
-  {
-    id: 'menta',
-    name: 'Menta',
-    bg: '#F0FAF6', surface: '#F6FEFB', accent: '#2E9E7A', accent2: '#9EDED0', tx: '#092418',
-  },
-  {
-    id: 'carbon',
-    name: 'Carbón',
-    bg: '#111318', surface: '#1A1D24', accent: '#E8C84A', accent2: '#2E2A14', tx: '#F5F0E0',
-  },
-  {
-    id: 'vino',
-    name: 'Vino',
-    bg: '#FAF0F2', surface: '#FEF5F7', accent: '#8A1A3A', accent2: '#E8AABB', tx: '#280810',
-  },
-  {
-    id: 'cobre',
-    name: 'Cobre',
-    bg: '#FAF2EC', surface: '#FEF8F4', accent: '#B05A20', accent2: '#E8C4A0', tx: '#260E00',
-  },
-  {
-    id: 'oceano',
-    name: 'Océano',
-    bg: '#080E1A', surface: '#0E1628', accent: '#3AB8C8', accent2: '#0E2A38', tx: '#D0EEF5',
-  },
-  {
-    id: 'limon',
-    name: 'Limón',
-    bg: '#FAFBF0', surface: '#FEFFF5', accent: '#7A9A0A', accent2: '#D8E8A0', tx: '#1A2000',
-  },
-  {
-    id: 'aurora',
-    name: 'Aurora',
-    bg: '#0A0E18', surface: '#121828', accent: '#E870A8', accent2: '#2A1030', tx: '#F8E0F0',
-  },
+  { id: 'durazno',    name: 'Durazno',    bg: '#FBF6F0', surface: '#FFF9F4', accent: '#C9785A', accent2: '#E8C5A8', tx: '#2C1810' },
+  { id: 'medianoche', name: 'Medianoche', bg: '#0F0F14', surface: '#16161E', accent: '#8B7CF8', accent2: '#2D2B4E', tx: '#E8E6FF' },
+  { id: 'bosque',     name: 'Bosque',     bg: '#F2F5EE', surface: '#F8FAF5', accent: '#5A8A5C', accent2: '#B8D4B9', tx: '#1A2E1B' },
+  { id: 'cielo',      name: 'Cielo',      bg: '#F0F5FB', surface: '#F8FAFE', accent: '#4A86C8', accent2: '#A8C8EE', tx: '#0E2040' },
+  { id: 'rosa',       name: 'Rosa',       bg: '#FDF0F5', surface: '#FFF5F8', accent: '#C45C80', accent2: '#F0B8CC', tx: '#3A0E22' },
+  { id: 'ambar',      name: 'Ámbar',      bg: '#FBF5E8', surface: '#FFFBF0', accent: '#C8880A', accent2: '#EED09A', tx: '#2C1C00' },
+  { id: 'pizarra',    name: 'Pizarra',    bg: '#F2F3F5', surface: '#FAFBFC', accent: '#5A6E8A', accent2: '#B0BED0', tx: '#0A1828' },
+  { id: 'nocturno',   name: 'Nocturno',   bg: '#130E0A', surface: '#1C1410', accent: '#D4956A', accent2: '#3A2618', tx: '#F0E8DE' },
+  { id: 'lavanda',    name: 'Lavanda',    bg: '#F5F0FB', surface: '#FAF7FE', accent: '#8A5FC8', accent2: '#D4B8F0', tx: '#1E0A3A' },
+  { id: 'menta',      name: 'Menta',      bg: '#F0FAF6', surface: '#F6FEFB', accent: '#2E9E7A', accent2: '#9EDED0', tx: '#092418' },
+  { id: 'carbon',     name: 'Carbón',     bg: '#111318', surface: '#1A1D24', accent: '#E8C84A', accent2: '#2E2A14', tx: '#F5F0E0' },
+  { id: 'vino',       name: 'Vino',       bg: '#FAF0F2', surface: '#FEF5F7', accent: '#8A1A3A', accent2: '#E8AABB', tx: '#280810' },
+  { id: 'cobre',      name: 'Cobre',      bg: '#FAF2EC', surface: '#FEF8F4', accent: '#B05A20', accent2: '#E8C4A0', tx: '#260E00' },
+  { id: 'oceano',     name: 'Océano',     bg: '#080E1A', surface: '#0E1628', accent: '#3AB8C8', accent2: '#0E2A38', tx: '#D0EEF5' },
+  { id: 'limon',      name: 'Limón',      bg: '#FAFBF0', surface: '#FEFFF5', accent: '#7A9A0A', accent2: '#D8E8A0', tx: '#1A2000' },
+  { id: 'aurora',     name: 'Aurora',     bg: '#0A0E18', surface: '#121828', accent: '#E870A8', accent2: '#2A1030', tx: '#F8E0F0' },
 ];
 
 function applyTheme(themeId) {
@@ -207,10 +135,7 @@ function applyTheme(themeId) {
 function loadSavedTheme() {
   try {
     const saved = localStorage.getItem('sigilo_theme');
-    if (saved && THEMES.find(t => t.id === saved)) {
-      applyTheme(saved);
-      return;
-    }
+    if (saved && THEMES.find(t => t.id === saved)) { applyTheme(saved); return; }
   } catch(e) {}
   applyTheme('durazno');
 }
@@ -221,17 +146,14 @@ function gosettings() {
   S.page = 'settings'; S.menu = null;
   renderPostMenu();
   document.title = 'ajustes · sigilo';
-  // Actualizar nav
-  ['nf','ne','ncom','np','nc'].forEach(id => {
+  ['nf', 'ne', 'ncom', 'np', 'nc'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.className = 'nbtn';
   });
   const nc = document.getElementById('nc');
   if (nc) nc.className = 'nbtn on';
-  // Renderizar
   const mc = document.getElementById('mc');
   if (mc) mc.innerHTML = rsettings();
-  // Guardar estado
   try { sessionStorage.setItem('sigilo_nav', JSON.stringify({ page: 'settings' })); } catch(e) {}
 }
 
@@ -240,7 +162,6 @@ function rsettings() {
   <div class="settings-page">
     <div class="settings-title">ajustes</div>
     <div class="settings-sub">personaliza tu experiencia en sigilo</div>
-
     <div class="settings-section">
       <div class="settings-section-title">✦ tema de color</div>
       <div class="theme-grid">
@@ -265,23 +186,25 @@ function rsettings() {
 
 function selectTheme(themeId) {
   applyTheme(themeId);
-
   const grid = document.querySelector('.theme-grid');
   if (grid) {
     grid.querySelectorAll('.theme-card').forEach(card => {
-      const isActive = card.getAttribute('onclick') === `selectTheme('${themeId}')`;
-      card.classList.toggle('active', isActive);
+      card.classList.toggle('active', card.getAttribute('onclick') === `selectTheme('${themeId}')`);
     });
   }
   toast('tema aplicado ✦');
 }
 
-// --- AUTH ---
 function stab(tab) {
   const lf = document.getElementById('lf'), rf = document.getElementById('rf');
   const tl = document.getElementById('tl'), tr = document.getElementById('tr');
-  if (tab === 'login') { lf.style.display='block'; rf.style.display='none'; tl.classList.add('on'); tr.classList.remove('on'); }
-  else { lf.style.display='none'; rf.style.display='block'; tr.classList.add('on'); tl.classList.remove('on'); }
+  if (tab === 'login') {
+    lf.style.display = 'block'; rf.style.display = 'none';
+    tl.classList.add('on'); tr.classList.remove('on');
+  } else {
+    lf.style.display = 'none'; rf.style.display = 'block';
+    tr.classList.add('on'); tl.classList.remove('on');
+  }
 }
 
 async function login() {
@@ -291,7 +214,6 @@ async function login() {
   if (!email) { errEl.textContent = 'Ingresá tu correo electrónico.'; return; }
   const btn = document.querySelector('#lf .btn-fill');
   if (btn) { btn.textContent = 'redirigiendo...'; btn.disabled = true; }
-
   await db.auth.signInWithPassword({ email });
 }
 
@@ -300,17 +222,13 @@ async function register() {
   const username = document.getElementById('ru').value.trim();
   const errEl = document.getElementById('ree');
   errEl.textContent = '';
-
   if (!username) { errEl.textContent = 'El nombre de usuario es obligatorio.'; return; }
   if (username.length < 4) { errEl.textContent = 'El nombre de usuario debe tener al menos 4 caracteres.'; return; }
   if (!/^[a-zA-Z0-9_]+$/.test(username)) { errEl.textContent = 'Solo letras, números y guión bajo.'; return; }
   if (!email) { errEl.textContent = 'El correo electrónico es obligatorio.'; return; }
-
   try { sessionStorage.setItem('sigilo_pending_username', username); } catch(e) {}
-
   const btn = document.querySelector('#rf .btn-fill');
   if (btn) { btn.textContent = 'redirigiendo...'; btn.disabled = true; }
-  
   await db.auth.signUp({ email });
 }
 
@@ -336,7 +254,6 @@ function hideLoading() {
 }
 
 async function refreshMyAvatarUrl() {
-  // Los avatares están en Cloudflare — la URL guardada en profiles/user_metadata
   return;
 }
 
@@ -346,8 +263,6 @@ async function boot() {
   const app = document.getElementById('app');
   app.style.display = 'flex'; app.style.flexDirection = 'column'; app.style.minHeight = '100%';
 
-  // ── Banner de migración: mostrar si el perfil viene de UUID viejo (sin kp_) ──
-  // Se muestra solo una vez hasta que la migración automática corra
   try {
     if (S.me && S.me.id && S.me.id.startsWith('kp_')) {
       const { data: perfil } = await db.from('profiles')
@@ -366,7 +281,6 @@ async function boot() {
       }
     }
   } catch(e) {}
-  // ───────────────────────────────────────────────────────────────────────────
 
   try {
     if (!history.state) {
@@ -374,36 +288,31 @@ async function boot() {
     }
   } catch(e) {}
 
-  // refrescar URL del avatar al iniciar sesión (reduce egressss)
   refreshMyAvatarUrl();
 
-// perfil completo desde supabase al arranque
-db.from('profiles')
-  .select('avatar_url, bio, display_name, username, pinned_post_id')
-  .eq('id', S.me.id)
-  .then(({ data }) => {
-    const d = data?.[0];
-    if (!d) return;
-    S.me.user_metadata = S.me.user_metadata || {};
-    S.me.user_metadata.avatar_url   = d.avatar_url;
-    S.me.user_metadata.bio          = d.bio;
-    S.me.user_metadata.display_name = d.display_name || d.username;
-    S.me.user_metadata.username     = d.username;
-    S._profileBio = d.bio || '';
-    // Sincronizar pin desde Supabase (sobrescribe el localStorage)
-    if (d.pinned_post_id) {
-      S.pinnedPosts[S.me.id] = d.pinned_post_id;
-    } else {
-      delete S.pinnedPosts[S.me.id];
-    }
-    try { localStorage.setItem('sigilo_pinned', JSON.stringify(S.pinnedPosts)); } catch(e) {}
-    if (S.page === 'profile' && S.puid === S.me.id) render();
-  }).catch(() => {});
+  db.from('profiles')
+    .select('avatar_url, bio, display_name, username, pinned_post_id')
+    .eq('id', S.me.id)
+    .then(({ data }) => {
+      const d = data?.[0];
+      if (!d) return;
+      S.me.user_metadata = S.me.user_metadata || {};
+      S.me.user_metadata.avatar_url   = d.avatar_url;
+      S.me.user_metadata.bio          = d.bio;
+      S.me.user_metadata.display_name = d.display_name || d.username;
+      S.me.user_metadata.username     = d.username;
+      S._profileBio = d.bio || '';
+      if (d.pinned_post_id) {
+        S.pinnedPosts[S.me.id] = d.pinned_post_id;
+      } else {
+        delete S.pinnedPosts[S.me.id];
+      }
+      try { localStorage.setItem('sigilo_pinned', JSON.stringify(S.pinnedPosts)); } catch(e) {}
+      if (S.page === 'profile' && S.puid === S.me.id) render();
+    }).catch(() => {});
 
   if (typeof initAnnounce === 'function') initAnnounce();
-  // ───────────────────────────────────────────────────────────────
 
-  // Restaurar la pagina donde estaba el usuario antes de refrescar
   try {
     const saved = JSON.parse(sessionStorage.getItem('sigilo_nav') || 'null');
     if (saved && saved.page === 'profile' && saved.puid) {
@@ -411,13 +320,11 @@ db.from('profiles')
       S.puid = saved.puid;
       S.ptab = saved.ptab || 'posts';
       nav();
-      // Mostrar skeleton mientras cargamos datos del perfil
       const mc = document.getElementById('mc');
       if (mc) {
         const sk = `<div class="skeleton-card"><div class="sk-head"><div class="sk-line sk-avatar"></div><div class="sk-meta"><div class="sk-line short"></div><div class="sk-line tiny"></div></div></div><div class="sk-line full"></div><div class="sk-line med"></div></div>`;
         mc.innerHTML = `<div class="ppage" style="padding-top:1.25rem"><div class="pavwrap"><div class="pav" style="background:var(--w3)"></div></div><div class="pinfo" style="text-align:center;padding:0 1rem"><div style="height:1.2rem;width:120px;background:var(--w3);border-radius:8px;margin:.5rem auto"></div><div style="height:.85rem;width:200px;background:var(--w3);border-radius:8px;margin:.4rem auto .9rem"></div></div>${sk.repeat(3)}</div>`;
       }
-      // Si es perfil ajeno, fetchear datos antes de renderizar
       if (saved.puid !== S.me?.id) {
         try {
           const { data } = await db.from('profiles')
@@ -449,60 +356,40 @@ db.from('profiles')
       return;
     }
     if (saved && saved.page === 'explore') {
-      fetchFolders();
-      loadNotifs();
-      loadPinnedPosts();
-      goExplore();
-      return;
+      fetchFolders(); loadNotifs(); loadPinnedPosts(); goExplore(); return;
     }
     if (saved && saved.page === 'settings') {
-      S.page = 'settings';
-      nav(); render();
-      fetchFolders();
-      loadNotifs();
-      return;
+      S.page = 'settings'; nav(); render(); fetchFolders(); loadNotifs(); return;
     }
     if (saved && saved.page === 'community') {
-      fetchFolders();
-      loadNotifs();
-      goCommunity();
-      return;
+      fetchFolders(); loadNotifs(); goCommunity(); return;
     }
   } catch(e) {}
 
-  // ── DEEP LINK: ?post=ID ──────────────────────────────────────────
-  // Si la URL contiene ?post=<id>, mostrar ese post de forma destacada
-  // en el feed y hacer scroll hasta él automáticamente.
-  const _urlParams = new URLSearchParams(window.location.search);
-  const _deepPostId = _urlParams.get('post');
-  if (_deepPostId) {
-    // Limpiar el parámetro de la URL sin recargar (evita que quede pegado)
+  const urlParams = new URLSearchParams(window.location.search);
+  const deepPostId = urlParams.get('post');
+  if (deepPostId) {
     try { history.replaceState(null, '', window.location.pathname); } catch(e) {}
     S.page = 'feed'; S.puid = null; S.explorePage = false;
     loadPinnedPosts();
     nav();
-    // Mostrar skeletons mientras carga
     const mc = document.getElementById('mc');
     if (mc) {
       const sk = `<div class="skeleton-card"><div class="sk-head"><div class="sk-line sk-avatar"></div><div class="sk-meta"><div class="sk-line short"></div><div class="sk-line tiny"></div></div></div><div class="sk-line full"></div><div class="sk-line med"></div></div>`;
       mc.innerHTML = `<div class="ftitle">inicio</div><div class="fsub">comparte decoraciones, letras, símbolos y más</div>${sk.repeat(4)}`;
     }
-    // Cargar el post específico primero, luego el feed completo
     (async () => {
       try {
-        const postIdNum = isNaN(_deepPostId) ? _deepPostId : Number(_deepPostId);
-        // Intentar traer el post por su ID directamente
+        const postIdNum = isNaN(deepPostId) ? deepPostId : Number(deepPostId);
         const { data: pdata } = await db.from('posts').select('*').eq('id', postIdNum).single();
         if (pdata) {
-          const linked = { ...pdata, likes: Array.isArray(pdata.likes)?pdata.likes:[], cmts: Array.isArray(pdata.cmts)?pdata.cmts:[], saved: Array.isArray(pdata.saved)?pdata.saved:[], t: pdata.created_at };
-          // Insertar al inicio si no existe aún
+          const linked = { ...pdata, likes: Array.isArray(pdata.likes) ? pdata.likes : [], cmts: Array.isArray(pdata.cmts) ? pdata.cmts : [], saved: Array.isArray(pdata.saved) ? pdata.saved : [], t: pdata.created_at };
           if (!S.posts.find(x => x.id === linked.id)) S.posts.unshift(linked);
         }
       } catch(e) {}
       await fetchPosts(true);
-      // Una vez renderizado, hacer scroll y resaltar el post
       setTimeout(() => {
-        const targetId = isNaN(_deepPostId) ? _deepPostId : Number(_deepPostId);
+        const targetId = isNaN(deepPostId) ? deepPostId : Number(deepPostId);
         const el = document.getElementById('post-' + safeId(targetId));
         if (el) {
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -511,20 +398,15 @@ db.from('profiles')
         }
       }, 350);
     })();
-    fetchFolders();
-    loadNotifs();
-    startTimestampRefresh();
+    fetchFolders(); loadNotifs(); startTimestampRefresh();
     return;
   }
-  // ────────────────────────────────────────────────────────────────
 
-  // Mostrar feed con skeletons mientras carga
   S.page = 'feed';
-  S.puid = null; // explícito: en feed no hay perfil activo
+  S.puid = null;
   S.explorePage = false;
   loadPinnedPosts();
   nav();
-  // Renderizar estructura del feed con skeletons
   const mc = document.getElementById('mc');
   if (mc) {
     const sk = `<div class="skeleton-card"><div class="sk-head"><div class="sk-line sk-avatar"></div><div class="sk-meta"><div class="sk-line short"></div><div class="sk-line tiny"></div></div></div><div class="sk-line full"></div><div class="sk-line med"></div></div>`;
@@ -536,17 +418,16 @@ db.from('profiles')
   fetchPosts();
   fetchFolders();
   loadNotifs();
-  fetchSavedPosts(); // cargar guardados al arrancar para que persistan entre sesiones
+  fetchSavedPosts();
   subscribeCommunityPosts();
   fetchCommunityPosts().then(() => renderCommunityDot());
   startTimestampRefresh();
 }
 
-// Refresca los timestamps visibles cada 60s sin re-render completo
-let _tsInterval = null;
+let timestampInterval = null;
 function startTimestampRefresh() {
-  if (_tsInterval) clearInterval(_tsInterval);
-  _tsInterval = setInterval(() => {
+  if (timestampInterval) clearInterval(timestampInterval);
+  timestampInterval = setInterval(() => {
     document.querySelectorAll('.ptime').forEach(el => {
       const ts = el.dataset.ts;
       if (ts) el.textContent = ago(ts);
@@ -563,13 +444,10 @@ function startTimestampRefresh() {
 }
 
 async function fetchPosts(reset = true) {
-  if (S.loading) return; // guard: evitar llamadas simultáneas
+  if (S.loading) return;
   S.loading = true;
 
-  if (reset) {
-    S.page_num = 1;
-    offset = 0;
-  }
+  if (reset) { S.page_num = 1; offset = 0; }
 
   const desde = offset;
   const hasta = desde + PAGE_SIZE - 1;
@@ -582,11 +460,7 @@ async function fetchPosts(reset = true) {
       .or('is_community.is.null,is_community.eq.false')
       .order('created_at', { ascending: false });
 
-    // FIX: filtrar por categoría en la query de Supabase cuando no es "todos"
-    // Antes solo se filtraba localmente, causando categorías vacías con paginación
-    if (S.cat && S.cat !== 'todos') {
-      query = query.eq('category', S.cat);
-    }
+    if (S.cat && S.cat !== 'todos') query = query.eq('category', S.cat);
 
     query = query.range(desde, hasta);
     ({ data, error } = await query);
@@ -598,7 +472,6 @@ async function fetchPosts(reset = true) {
 
   if (error) {
     console.error('Error en el feed:', error);
-    // Mostrar error visible al usuario si el feed está vacío
     const mc = document.getElementById('mc');
     if (mc && S.posts.length === 0) {
       mc.innerHTML = `<div class="empty"><div class="ei">⚠️</div><div class="el">no se pudo cargar el feed. ¡revisa tu conexión e intenta de nuevo!<br><br><button class="load-more-btn" onclick="fetchPosts()">reintentar</button></div></div>`;
@@ -619,15 +492,13 @@ async function fetchPosts(reset = true) {
       S.posts = newPosts;
     } else {
       const existingIds = new Set(S.posts.map(p => p.id));
-      const filteredNew = newPosts.filter(p => !existingIds.has(p.id));
-      S.posts = [...S.posts, ...filteredNew];
+      S.posts = [...S.posts, ...newPosts.filter(p => !existingIds.has(p.id))];
     }
 
     offset += data.length;
     render();
     setTimeout(setupInfiniteScroll, 100);
   } else if (reset && data && data.length === 0) {
-    // No hay posts en absoluto
     render();
   }
 }
@@ -652,13 +523,9 @@ async function fetchProfilePosts(userId) {
       t: p.created_at
     }));
 
-    // Guardar posts del perfil en S.profilePosts (separado de S.posts del feed)
-    // para NO contaminar el feed con posts de perfiles visitados
     S.profilePosts = S.profilePosts || {};
     S.profilePosts[userId] = mapped;
 
-    // También mezclar en S.posts SIN reemplazar los que ya existen
-    // (necesario para que findPost() funcione en likes/comentarios)
     const existingIds = new Set(S.posts.map(p => p.id));
     const nuevos = mapped.filter(p => !existingIds.has(p.id));
     if (nuevos.length > 0) S.posts.push(...nuevos);
@@ -670,8 +537,6 @@ async function fetchProfilePosts(userId) {
 }
 window.fetchProfilePosts = fetchProfilePosts;
 
-// FIX GUARDADOS: carga posts guardados en S.savedPosts (array separado de S.posts)
-// y renderiza DESPUES de recibir los datos de Supabase, no antes.
 async function fetchSavedPosts() {
   if (!S.me) return;
   try {
@@ -702,27 +567,23 @@ window.fetchSavedPosts = fetchSavedPosts;
 async function loadMore() {
   const btn = document.querySelector('.load-more-btn');
   if (btn) { btn.textContent = 'cargando...'; btn.disabled = true; }
-  
-  await fetchPosts(false); // Llamamos con reset=false para que sume al offset
-  
+  await fetchPosts(false);
   if (btn) { btn.textContent = 'cargar más'; btn.disabled = false; }
 }
 
 async function logout() {
   unsubscribeNotifs();
-  if (_tsInterval) { clearInterval(_tsInterval); _tsInterval = null; }
-  if (_sentinel) { _sentinel.disconnect(); _sentinel = null; }
+  if (timestampInterval) { clearInterval(timestampInterval); timestampInterval = null; }
+  if (scrollSentinel) { scrollSentinel.disconnect(); scrollSentinel = null; }
   await db.auth.signOut();
   S.me = null; S.notifs = []; S.notifOpen = false;
   document.getElementById('app').style.display = 'none';
   document.getElementById('auth').style.display = 'flex';
   document.getElementById('lu').value = '';
   stab('login');
-  // Limpiar historial para que atrás no vuelva a una página protegida
   try { history.replaceState(null, '', window.location.pathname); } catch(e) {}
 }
 
-// --- BADGE DE COMUNIDAD ---
 const COMM_SEEN_KEY = 'sigilo_comm_seen';
 function getCommSeen() { try { return localStorage.getItem(COMM_SEEN_KEY) || ''; } catch(e) { return ''; } }
 function setCommSeen(ts) { try { localStorage.setItem(COMM_SEEN_KEY, ts); } catch(e) {} }
@@ -732,18 +593,15 @@ function renderCommunityDot() {
   if (!dot) return;
   const seen = getCommSeen();
   const latest = S.communityPosts.length > 0 ? S.communityPosts[0].created_at : null;
-  const hasNew = latest && (!seen || latest > seen);
-  dot.classList.toggle('visible', !!hasNew);
+  dot.classList.toggle('visible', !!(latest && (!seen || latest > seen)));
 }
 
-let _communityChannel = null;
-let _communityPollInterval = null;
-let _communityLastTs = null;
+let communityPollInterval = null;
+let communityLastTs = null;
 
 function subscribeCommunityPosts() {
-  if (_communityPollInterval) return; // ya activo
-  // Polling cada 20 segundos como reemplazo de Supabase Realtime
-  _communityPollInterval = setInterval(async () => {
+  if (communityPollInterval) return;
+  communityPollInterval = setInterval(async () => {
     if (!S.me) return;
     try {
       let q = db.from('posts')
@@ -751,17 +609,14 @@ function subscribeCommunityPosts() {
         .eq('is_community', true)
         .order('created_at', { ascending: false })
         .limit(5);
-      if (_communityLastTs) {
-        q = q.gt('created_at', _communityLastTs);
-      }
+      if (communityLastTs) q = q.gt('created_at', communityLastTs);
       const { data } = await q;
       if (!data || data.length === 0) return;
-      _communityLastTs = data[0].created_at;
+      communityLastTs = data[0].created_at;
       let hasNew = false;
       data.forEach(p => {
         if (!S.communityPosts.find(x => x.id === p.id)) {
-          const newPost = { ...p, likes: Array.isArray(p.likes)?p.likes:[], cmts: Array.isArray(p.cmts)?p.cmts:[], saved: Array.isArray(p.saved)?p.saved:[], t: p.created_at };
-          S.communityPosts.unshift(newPost);
+          S.communityPosts.unshift({ ...p, likes: Array.isArray(p.likes) ? p.likes : [], cmts: Array.isArray(p.cmts) ? p.cmts : [], saved: Array.isArray(p.saved) ? p.saved : [], t: p.created_at });
           hasNew = true;
         }
       });
@@ -772,15 +627,6 @@ function subscribeCommunityPosts() {
     } catch(e) {}
   }, 20000);
 }
-
-// --- NOTIFICACIONES (Supabase Realtime) ---
-// Requiere tabla en Supabase:
-// notifications(id uuid pk default gen_random_uuid(), to_uid text, from_uid text,
-//   from_name text, type text, post_id text, post_body text,
-//   read bool default false, created_at timestamptz default now())
-// RLS: SELECT where to_uid = auth.uid()
-
-let _notifChannel = null;
 
 async function loadNotifs() {
   if (!S.me) return;
@@ -805,13 +651,12 @@ async function loadNotifs() {
   subscribeNotifs();
 }
 
-let _notifPollInterval = null;
-let _notifLastTs = null;
+let notifPollInterval = null;
+let notifLastTs = null;
 
 function subscribeNotifs() {
-  if (_notifPollInterval) return;
-  // Polling cada 15 segundos — reemplaza Supabase Realtime
-  _notifPollInterval = setInterval(async () => {
+  if (notifPollInterval) return;
+  notifPollInterval = setInterval(async () => {
     if (!S.me) return;
     try {
       let q = db.from('notifications')
@@ -819,21 +664,14 @@ function subscribeNotifs() {
         .eq('to_uid', S.me.id)
         .order('created_at', { ascending: false })
         .limit(10);
-      if (_notifLastTs) {
-        q = q.gt('created_at', _notifLastTs);
-      }
+      if (notifLastTs) q = q.gt('created_at', notifLastTs);
       const { data } = await q;
       if (!data || data.length === 0) return;
-      _notifLastTs = data[0].created_at;
+      notifLastTs = data[0].created_at;
       let hasNew = false;
       data.forEach(n => {
         if (!S.notifs.find(x => x.id === n.id)) {
-          S.notifs.unshift({
-            id: n.id, type: n.type,
-            fromUid: n.from_uid, fromName: n.from_name,
-            postId: n.post_id, postBody: n.post_body,
-            ts: n.created_at, read: false,
-          });
+          S.notifs.unshift({ id: n.id, type: n.type, fromUid: n.from_uid, fromName: n.from_name, postId: n.post_id, postBody: n.post_body, ts: n.created_at, read: false });
           hasNew = true;
         }
       });
@@ -846,10 +684,10 @@ function subscribeNotifs() {
 }
 
 function unsubscribeNotifs() {
-  if (_notifPollInterval) { clearInterval(_notifPollInterval); _notifPollInterval = null; }
-  if (_communityPollInterval) { clearInterval(_communityPollInterval); _communityPollInterval = null; }
-  _notifLastTs = null;
-  _communityLastTs = null;
+  if (notifPollInterval) { clearInterval(notifPollInterval); notifPollInterval = null; }
+  if (communityPollInterval) { clearInterval(communityPollInterval); communityPollInterval = null; }
+  notifLastTs = null;
+  communityLastTs = null;
 }
 
 async function saveNotif(toUid, type, fromName, postId, postBody) {
@@ -889,7 +727,6 @@ function renderNotifBadge() {
 }
 
 function toggleNotif() {
-  // Cerrar búsqueda si está abierta (mutuamente excluyentes)
   if (S.searchOpen) toggleSearch();
   mobCloseSearch();
   S.notifOpen = !S.notifOpen;
@@ -897,7 +734,6 @@ function toggleNotif() {
     const unreadIds = S.notifs.filter(n => !n.read).map(n => n.id);
     S.notifs.forEach(n => n.read = true);
     renderNotifBadge();
-    // Marcar como leídas en Supabase (sin await para no bloquear UI)
     if (unreadIds.length > 0) {
       db.from('notifications').update({ read: true }).in('id', unreadIds).then(() => {});
     }
@@ -908,43 +744,45 @@ function toggleNotif() {
 function renderNotifPanel() {
   let el = document.getElementById('notifPanel');
   if (!el) { el = document.createElement('div'); el.id = 'notifPanel'; document.body.appendChild(el); }
-  if (!S.notifOpen) { el.innerHTML = ''; const _bd=document.getElementById('notifBackdrop'); if(_bd) _bd.style.display='none'; return; }
-  // Backdrop para móvil — toque fuera cierra el panel
+  if (!S.notifOpen) {
+    el.innerHTML = '';
+    const bd = document.getElementById('notifBackdrop');
+    if (bd) bd.style.display = 'none';
+    return;
+  }
   let bd = document.getElementById('notifBackdrop');
   if (!bd) {
     bd = document.createElement('div');
     bd.id = 'notifBackdrop';
     bd.style.cssText = 'position:fixed;inset:0;z-index:69;display:none;';
-    bd.addEventListener('click', () => { S.notifOpen=false; renderNotifPanel(); });
+    bd.addEventListener('click', () => { S.notifOpen = false; renderNotifPanel(); });
     document.body.appendChild(bd);
   }
   bd.style.display = 'block';
   const items = S.notifs.length === 0
     ? `<div class="s-empty" style="padding:1.2rem .6rem">sin notificaciones aún</div>`
-    : S.notifs.slice(0,20).map(n => `
+    : S.notifs.slice(0, 20).map(n => `
       <div class="notif-row" onclick="goNotif('${n.postId}')">
-        <span class="notif-icon">${n.type==='like'?'♡':'◌'}</span>
+        <span class="notif-icon">${n.type === 'like' ? '♡' : '◌'}</span>
         <div class="notif-body">
           <span class="notif-name">${esc(n.fromName)}</span>
-          ${n.type==='like'?' le dio like a tu publicación':' comentó en tu publicación'}
-          ${n.postBody?`<div class="notif-preview">${esc(n.postBody)}</div>`:''}
+          ${n.type === 'like' ? ' le dio like a tu publicación' : ' comentó en tu publicación'}
+          ${n.postBody ? `<div class="notif-preview">${esc(n.postBody)}</div>` : ''}
         </div>
         <span class="notif-time" data-ts="${n.ts}">${ago(n.ts)}</span>
       </div>`).join('');
   el.innerHTML = `<div class="notif-panel" onclick="event.stopPropagation()">
     <div class="notif-head">
       <span>notificaciones</span>
-      ${S.notifs.length>0?`<button class="notif-clear" onclick="event.stopPropagation();clearNotifs()">limpiar</button>`:''}
+      ${S.notifs.length > 0 ? `<button class="notif-clear" onclick="event.stopPropagation();clearNotifs()">limpiar</button>` : ''}
     </div>
-    <div class="notif-list">
-      ${items}
-    </div>
+    <div class="notif-list">${items}</div>
   </div>`;
 }
 
 function clearNotifs() {
   db.from('notifications').delete().eq('to_uid', S.me.id).then(() => {});
-  S.notifs=[]; renderNotifBadge(); renderNotifPanel();
+  S.notifs = []; renderNotifBadge(); renderNotifPanel();
 }
 
 function goNotif(postId) {
@@ -952,18 +790,19 @@ function goNotif(postId) {
   gofeed();
   setTimeout(() => {
     const el = document.getElementById('post-' + safeId(postId));
-    if (el) { el.scrollIntoView({ behavior:'smooth', block:'center' }); el.classList.add('highlight'); setTimeout(()=>el.classList.remove('highlight'),1800); }
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('highlight');
+      setTimeout(() => el.classList.remove('highlight'), 1800);
+    }
   }, 200);
 }
 
-// --- CARPETAS ---
 async function fetchFolders() {
   try {
     const { data, error } = await db.from('folders').select('*').order('created_at', { ascending: true });
     if (!error && data) {
       S.folders = data;
-      // Solo re-renderizar si S.puid está correctamente seteado
-      // (evita que el render async pise el estado de perfil con puid=null)
       if (S.page !== 'profile' || S.puid) render();
     }
   } catch(e) { S.folders = []; }
@@ -1010,16 +849,14 @@ async function assignToFolder(postId, folderId) {
   S.folderPostModal = null; toast(newFolder ? 'añadido a carpeta' : 'eliminado de carpeta'); render();
 }
 
-function openFolderPicker(postId) { S.folderPostModal = isNaN(postId)?postId:Number(postId); S.menu=null; render(); }
+function openFolderPicker(postId) { S.folderPostModal = isNaN(postId) ? postId : Number(postId); S.menu = null; render(); }
 function closeFolderPicker() { S.folderPostModal = null; render(); }
 function openCreateFolder() { S.folderModal = 'create'; S.folderTarget = null; render(); }
 function openRenameFolder(id) { S.folderModal = 'rename'; S.folderTarget = id; render(); }
 function closeFolderForm() { S.folderModal = false; S.folderTarget = null; render(); }
-function toggleFolderView(id) { S.activeFolderTab = S.activeFolderTab===id?null:id; render(); }
+function toggleFolderView(id) { S.activeFolderTab = S.activeFolderTab === id ? null : id; render(); }
 
-// --- BUSQUEDA ---
 function toggleSearch() {
-  // Cerrar notifs si están abiertas (mutuamente excluyentes)
   if (S.notifOpen) { S.notifOpen = false; renderNotifPanel(); }
   S.searchOpen = !S.searchOpen;
   const overlay = document.getElementById('searchOverlay');
@@ -1053,7 +890,6 @@ async function searchUsers() {
       if (error || !data || data.length === 0) {
         res.innerHTML = `<div class="s-empty">no se encontraron usuarios</div>`; return;
       }
-      // Resolver URLs de avatar (puede requerir URL firmada)
       const usersWithAv = await Promise.all(data.map(async u => {
         let av = u.avatar_url;
         if (u.avatar_path) {
@@ -1064,10 +900,8 @@ async function searchUsers() {
       }));
       res.innerHTML = usersWithAv.map(u => {
         const name = u.display_name || u.username || '?';
-        const ini = (name[0]||'?').toUpperCase().replace(/'/g,'&#39;');
-        const av = u._resolved_av;
         return `<div class="s-row" onclick="goSearchUser('${u.id}')">
-          ${avEl({ display_name: name, avatar_url: av })}
+          ${avEl({ display_name: name, avatar_url: u._resolved_av })}
           <span class="s-name">${esc(name)}</span>
         </div>`;
       }).join('');
@@ -1079,25 +913,19 @@ async function searchUsers() {
 
 function goSearchUser(id) { toggleSearch(); vprof(id); }
 
-// --- NAVEGACION ---
 function saveNavState() {
   const state = { page: S.page, puid: S.puid, ptab: S.ptab };
   try { sessionStorage.setItem('sigilo_nav', JSON.stringify(state)); } catch(e) {}
-  // Integrar con History API para que el botón atrás del browser funcione
   try {
     const current = history.state;
-    const isSameState = current && current.page === state.page && current.puid === state.puid;
-    if (!isSameState) {
-      history.pushState(state, '', window.location.pathname);
-    }
+    const isSame = current && current.page === state.page && current.puid === state.puid;
+    if (!isSame) history.pushState(state, '', window.location.pathname);
   } catch(e) {}
 }
 
-// Manejar el botón atrás / adelante del navegador
 window.addEventListener('popstate', (e) => {
   const state = e.state;
   if (!state) return;
-  // Si S.me aún no está listo (sesión restaurando), guardar estado para procesarlo en boot
   if (!S.me) {
     try { sessionStorage.setItem('sigilo_nav', JSON.stringify(state)); } catch(err) {}
     return;
@@ -1128,9 +956,8 @@ function applyNavState(state) {
 }
 
 function gofeed() {
-  S.page='feed'; S.explorePage=false; S.communityPage=false; S.feedTab='todos'; S.puid=null; S.menu=null;
-  renderPostMenu(); saveNavState(); document.title='inicio · sigilo'; nav();
-  // Siempre mostrar skeletons y re-fetchear al volver al feed para evitar posts de perfiles anteriores
+  S.page = 'feed'; S.explorePage = false; S.communityPage = false; S.feedTab = 'todos'; S.puid = null; S.menu = null;
+  renderPostMenu(); saveNavState(); document.title = 'inicio · sigilo'; nav();
   const mc = document.getElementById('mc');
   if (mc) {
     const sk = `<div class="skeleton-card"><div class="sk-head"><div class="sk-line sk-avatar"></div><div class="sk-meta"><div class="sk-line short"></div><div class="sk-line tiny"></div></div></div><div class="sk-line full"></div><div class="sk-line med"></div></div>`;
@@ -1153,7 +980,7 @@ async function goCommunity() {
   renderCommunity();
 }
 
-async function fetchCommunityPosts(reset = true) {
+async function fetchCommunityPosts() {
   if (S.communityLoading) return;
   S.communityLoading = true;
   try {
@@ -1180,7 +1007,6 @@ function renderCommunity() {
   if (S.page !== 'community') return;
   const mc = document.getElementById('mc');
   if (!mc) return;
-  const posts = S.communityPosts;
   mc.innerHTML = `
     <div class="ftitle">comunidad</div>
     <div class="fsub">búsquedas, conversaciones y todo lo del sitio</div>
@@ -1191,9 +1017,9 @@ function renderCommunity() {
         <button class="pbtn" onclick="postCommunity()">publicar</button>
       </div>
     </div>
-    ${posts.length === 0
+    ${S.communityPosts.length === 0
       ? `<div class="empty"><div class="ei">💬</div><div class="el">aún no hay publicaciones en comunidad — ¡sé el primero!</div></div>`
-      : posts.map(rpost).join('')
+      : S.communityPosts.map(rpost).join('')
     }`;
   const ta = document.getElementById('ct-comm');
   const cc = document.getElementById('cc-comm');
@@ -1227,15 +1053,10 @@ async function postCommunity() {
   if (btn) { btn.textContent = 'publicar'; btn.disabled = false; }
   if (error) { toast('Error: ' + error.message); return; }
   if (data && data[0]) {
-    const np = { ...data[0], likes: [], cmts: [], saved: [], t: data[0].created_at };
-    S.communityPosts.unshift(np);
+    S.communityPosts.unshift({ ...data[0], likes: [], cmts: [], saved: [], t: data[0].created_at });
   }
-  // Re-render wherever community is shown (feed tab or standalone page)
-  if (S.page === 'community') {
-    renderCommunity();
-  } else {
-    render();
-  }
+  if (S.page === 'community') renderCommunity();
+  else render();
   setTimeout(() => {
     const ta = document.getElementById('ct-comm');
     if (ta) ta.value = '';
@@ -1248,25 +1069,25 @@ async function postCommunity() {
 window.goCommunity = goCommunity;
 window.postCommunity = postCommunity;
 window.renderCommunity = renderCommunity;
+
 function goprofile() {
   const myId = S.me.id;
   S.page = 'profile'; S.explorePage = false; S.puid = myId; S.ptab = 'posts'; S.menu = null;
   renderPostMenu(); saveNavState(); document.title = 'perfil · sigilo'; nav(); render();
   fetchProfilePosts(myId);
-  fetchSavedPosts(); // refrescar guardados cada vez que el usuario entra a su perfil
+  fetchSavedPosts();
   if (!S.me.user_metadata?.bio && !S._profileBio) {
     db.from('profiles').select('bio').eq('id', myId).single().then(({ data }) => {
       if (data?.bio) { S._profileBio = data.bio; if (S.page === 'profile' && S.puid === myId) render(); }
     }).catch(() => {});
   }
 }
+
 async function vprof(id) {
-  S.page='profile'; S.explorePage=false; S.puid=id; S.ptab='posts'; S.menu=null; saveNavState(); document.title='perfil · sigilo'; nav();
-  // Render inmediato con lo que hay (puede estar vacío → muestra "cargando...")
+  S.page = 'profile'; S.explorePage = false; S.puid = id; S.ptab = 'posts'; S.menu = null;
+  saveNavState(); document.title = 'perfil · sigilo'; nav();
   render();
 
-  // Para perfiles ajenos: siempre fetchear datos frescos de Supabase via REST directo
-  // (evita problemas con el proxy PostgREST que a veces falla silenciosamente)
   if (id !== S.me.id) {
     try {
       const base = window._sigiloSupabaseUrl || '';
@@ -1299,28 +1120,22 @@ async function vprof(id) {
 }
 
 function nav() {
-  ['nf','ne','ncom','np','nc'].forEach(id => { const el=document.getElementById(id); if(el) el.className='nbtn'; });
-  if (S.explorePage) { const el=document.getElementById('ne'); if(el) el.className='nbtn on'; }
-  else if (S.communityPage) { const el=document.getElementById('ncom'); if(el) el.className='nbtn on'; }
-  else if (S.page === 'feed') { const el=document.getElementById('nf'); if(el) el.className='nbtn on'; }
-  else if (S.page === 'profile') { const el=document.getElementById('np'); if(el) el.className='nbtn on'; }
-  else if (S.page === 'settings') { const el=document.getElementById('nc'); if(el) el.className='nbtn on'; }
+  ['nf', 'ne', 'ncom', 'np', 'nc'].forEach(id => { const el = document.getElementById(id); if (el) el.className = 'nbtn'; });
+  if (S.explorePage) { const el = document.getElementById('ne'); if (el) el.className = 'nbtn on'; }
+  else if (S.communityPage) { const el = document.getElementById('ncom'); if (el) el.className = 'nbtn on'; }
+  else if (S.page === 'feed') { const el = document.getElementById('nf'); if (el) el.className = 'nbtn on'; }
+  else if (S.page === 'profile') { const el = document.getElementById('np'); if (el) el.className = 'nbtn on'; }
+  else if (S.page === 'settings') { const el = document.getElementById('nc'); if (el) el.className = 'nbtn on'; }
 }
 
 function avEl(user, big = false, canEdit = false) {
   const cls = big ? 'pav' : 'av';
-  // Obtenemos el nombre para las iniciales
   const name = user?.user_metadata?.display_name || user?.display_name || user?.name || user?.username || user?.email || '?';
   const ini = (name.split(' ').map(w => w[0]).filter(Boolean).join('').toUpperCase().slice(0, 2) || '?').replace(/'/g, '&#39;');
-  
-  // Buscamos la URL del avatar en las distintas propiedades posibles
   const avatarUrl = user?.user_metadata?.avatar_url || user?.avatar_url || user?.av || null;
-  
-  // Solo mostramos el overlay de "cambiar foto" si es el perfil grande Y el usuario tiene permiso
   const overlay = (big && canEdit) ? '<div class="pavov">cambiar foto</div>' : '';
 
   if (avatarUrl) {
-    // onerror usa una función global para evitar problemas de escaping de comillas en el atributo
     const safeUrl = esc(avatarUrl);
     return `<div class="${cls}"><img src="${safeUrl}" alt="" loading="lazy" onerror="this.style.display='none';this.parentNode.dataset.ini=this.parentNode.dataset.ini||'${ini}';if(!this.parentNode.querySelector('span')){var s=document.createElement('span');s.textContent=this.parentNode.dataset.ini||'?';this.parentNode.appendChild(s);}"/>${overlay}</div>`;
   }
@@ -1332,7 +1147,7 @@ function render() {
   if (mc) {
     if (S.page === 'settings') mc.innerHTML = rsettings();
     else if (S.page === 'community') renderCommunity();
-    else mc.innerHTML = S.page==='feed' ? rfeed() : rprofile();
+    else mc.innerHTML = S.page === 'feed' ? rfeed() : rprofile();
   }
   renderFolderPickerModal();
   renderFolderFormModal();
@@ -1350,7 +1165,7 @@ function attachTextareaResize() {
   if (ta && !ta._resizeAttached) {
     ta._resizeAttached = true;
     ta.addEventListener('focus', () => {
-      if (ta.offsetHeight < 100) { ta.style.minHeight = '110px'; }
+      if (ta.offsetHeight < 100) ta.style.minHeight = '110px';
     });
     ta.addEventListener('input', () => {
       ta.style.height = 'auto';
@@ -1363,7 +1178,6 @@ function attachTextareaResize() {
       }
     });
   }
-  // Wire up community textarea (inline tab)
   const tac = document.getElementById('ct-comm');
   if (tac && !tac._resizeAttached) {
     tac._resizeAttached = true;
@@ -1380,24 +1194,23 @@ function attachTextareaResize() {
   }
 }
 
-// --- MODALES ---
 function renderFolderPickerModal() {
   let el = document.getElementById('folderPickerModal');
-  if (!el) { el = document.createElement('div'); el.id='folderPickerModal'; document.body.appendChild(el); }
-  if (S.folderPostModal === null) { el.innerHTML=''; return; }
+  if (!el) { el = document.createElement('div'); el.id = 'folderPickerModal'; document.body.appendChild(el); }
+  if (S.folderPostModal === null) { el.innerHTML = ''; return; }
   const post = findPost(S.folderPostModal);
   const myFolders = S.folders.filter(f => f.user_id === S.me.id);
   el.innerHTML = `<div class="mov" onclick="if(event.target===this)closeFolderPicker()">
     <div class="mdl">
       <div class="mdlt">guardar en carpeta</div>
-      ${myFolders.length===0
+      ${myFolders.length === 0
         ? `<div class="empty"><div class="ei">📂</div><div class="el">Aún no tienes carpetas. Crea una desde colecciones.</div></div>`
         : myFolders.map(f => {
-            const active = post && post.folder_id===f.id;
-            return `<button class="folder-pick-btn${active?' active':''}" onclick="assignToFolder(${S.folderPostModal},'${f.id}')">
-              <span class="fp-icon">${active?'📂':'📁'}</span>
+            const active = post && post.folder_id === f.id;
+            return `<button class="folder-pick-btn${active ? ' active' : ''}" onclick="assignToFolder(${S.folderPostModal},'${f.id}')">
+              <span class="fp-icon">${active ? '📂' : '📁'}</span>
               <span>${esc(f.name)}</span>
-              ${active?'<span class="fp-check">✓</span>':''}
+              ${active ? '<span class="fp-check">✓</span>' : ''}
             </button>`;
           }).join('')}
       <div class="macts"><button class="cancelbtn" onclick="closeFolderPicker()">cancelar</button></div>
@@ -1407,30 +1220,29 @@ function renderFolderPickerModal() {
 
 function renderFolderFormModal() {
   let el = document.getElementById('folderFormModal');
-  if (!el) { el = document.createElement('div'); el.id='folderFormModal'; document.body.appendChild(el); }
-  if (!S.folderModal) { el.innerHTML=''; return; }
-  const isRename = S.folderModal==='rename';
-  const folder = isRename ? S.folders.find(f=>f.id===S.folderTarget) : null;
+  if (!el) { el = document.createElement('div'); el.id = 'folderFormModal'; document.body.appendChild(el); }
+  if (!S.folderModal) { el.innerHTML = ''; return; }
+  const isRename = S.folderModal === 'rename';
+  const folder = isRename ? S.folders.find(f => f.id === S.folderTarget) : null;
   const val = folder ? esc(folder.name) : '';
   el.innerHTML = `<div class="mov" onclick="if(event.target===this)closeFolderForm()">
     <div class="mdl">
-      <div class="mdlt">${isRename?'renombrar carpeta':'nueva carpeta'}</div>
+      <div class="mdlt">${isRename ? 'renombrar carpeta' : 'nueva carpeta'}</div>
       <div class="field">
         <label>nombre de la carpeta</label>
         <input id="folderNameInput" value="${val}" placeholder="ej. poemas, usernames bonitos..." maxlength="40"/>
       </div>
       <div class="macts">
         <button class="cancelbtn" onclick="closeFolderForm()">cancelar</button>
-        <button class="savebtn" onclick="${isRename?`renameFolder('${S.folderTarget}',document.getElementById('folderNameInput').value)`:`createFolder(document.getElementById('folderNameInput').value)`}">guardar</button>
+        <button class="savebtn" onclick="${isRename ? `renameFolder('${S.folderTarget}',document.getElementById('folderNameInput').value)` : `createFolder(document.getElementById('folderNameInput').value)`}">guardar</button>
       </div>
     </div>
   </div>`;
-  setTimeout(()=>{ const inp=document.getElementById('folderNameInput'); if(inp){inp.focus();inp.select();} }, 30);
+  setTimeout(() => { const inp = document.getElementById('folderNameInput'); if (inp) { inp.focus(); inp.select(); } }, 30);
 }
 
-// --- MODAL EDICION DE POST ---
 function openEditPost(id) {
-  id = isNaN(id)?id:Number(id);
+  id = isNaN(id) ? id : Number(id);
   S.editModal = id; S.menu = null; render();
 }
 
@@ -1438,21 +1250,21 @@ function closeEditPost() { S.editModal = null; render(); }
 
 function renderEditModal() {
   let el = document.getElementById('editPostModal');
-  if (!el) { el = document.createElement('div'); el.id='editPostModal'; document.body.appendChild(el); }
-  if (!S.editModal) { el.innerHTML=''; return; }
+  if (!el) { el = document.createElement('div'); el.id = 'editPostModal'; document.body.appendChild(el); }
+  if (!S.editModal) { el.innerHTML = ''; return; }
   const p = findPost(S.editModal);
-  if (!p) { el.innerHTML=''; return; }
+  if (!p) { el.innerHTML = ''; return; }
   el.innerHTML = `<div class="mov" onclick="if(event.target===this)closeEditPost()">
     <div class="mdl">
       <div class="mdlt">editar publicación</div>
       <div class="field">
         <label>categoría</label>
-        <select class="csel" id="edit-cat" style="width:100%;padding:.55rem .75rem">${CATS.slice(1).map(c=>`<option${p.category===c?' selected':''}>${c}</option>`).join('')}</select>
+        <select class="csel" id="edit-cat" style="width:100%;padding:.55rem .75rem">${CATS.slice(1).map(c => `<option${p.category === c ? ' selected' : ''}>${c}</option>`).join('')}</select>
       </div>
       <div class="field">
         <label>Contenido</label>
         <textarea id="edit-body" maxlength="${MAX_CHARS}" style="min-height:100px;width:100%;padding:.7rem .95rem;border:1px solid var(--bd);border-radius:var(--r2);background:var(--bg);color:var(--tx);font-size:.88rem;resize:none;outline:none;font-family:var(--fb)">${esc(p.body)}</textarea>
-        <div style="display:flex;justify-content:flex-end;margin-top:.25rem"><span id="edit-char-count" class="char-count">${MAX_CHARS-(p.body||'').length}</span></div>
+        <div style="display:flex;justify-content:flex-end;margin-top:.25rem"><span id="edit-char-count" class="char-count">${MAX_CHARS - (p.body || '').length}</span></div>
       </div>
       <div class="macts">
         <button class="cancelbtn" onclick="closeEditPost()">cancelar</button>
@@ -1466,18 +1278,18 @@ function renderEditModal() {
       ta.focus();
       ta.addEventListener('input', () => {
         const cnt = document.getElementById('edit-char-count');
-        if (cnt) { const r=MAX_CHARS-ta.value.length; cnt.textContent=r; cnt.className='char-count'+(r<50?' warn':'')+(r<0?' over':''); }
+        if (cnt) { const r = MAX_CHARS - ta.value.length; cnt.textContent = r; cnt.className = 'char-count' + (r < 50 ? ' warn' : '') + (r < 0 ? ' over' : ''); }
       });
     }
   }, 30);
 }
 
 async function saveEditPost(id) {
-  id = isNaN(id)?id:Number(id);
+  id = isNaN(id) ? id : Number(id);
   const body = document.getElementById('edit-body')?.value?.trim();
   const category = document.getElementById('edit-cat')?.value;
   if (!body) return toast('el contenido no puede estar vacío');
-  if (body.length > MAX_CHARS) return toast('máximo '+MAX_CHARS+' caracteres');
+  if (body.length > MAX_CHARS) return toast('máximo ' + MAX_CHARS + ' caracteres');
   const { error } = await db.from('posts').update({ body, category }).eq('id', id);
   if (error) return toast('Error al guardar');
   const p = findPost(id);
@@ -1485,14 +1297,13 @@ async function saveEditPost(id) {
   S.editModal = null; toast('publicación editada'); render();
 }
 
-// --- FEED ---
 function rCommunitySection() {
   const postsHtml = S.communityPosts.length === 0
-    ? '<div class="empty"><div class="ei">\ud83d\udcac</div><div class="el">a\u00fan no hay publicaciones en comunidad \u2014 \u00a1s\u00e9 el primero!</div></div>'
+    ? '<div class="empty"><div class="ei">💬</div><div class="el">aún no hay publicaciones en comunidad — ¡sé el primero!</div></div>'
     : S.communityPosts.map(rpost).join('');
   return '<div class="community-tab-inline">' +
     '<div class="ccard">' +
-      '<div class="ctop">' + avEl(S.me) + '<textarea id="ct-comm" class="ctxt" placeholder="inicia una conversaci\u00f3n, haz una b\u00fasqueda..." maxlength="' + MAX_CHARS + '"></textarea></div>' +
+      '<div class="ctop">' + avEl(S.me) + '<textarea id="ct-comm" class="ctxt" placeholder="inicia una conversación, haz una búsqueda..." maxlength="' + MAX_CHARS + '"></textarea></div>' +
       '<div style="display:flex;justify-content:space-between;align-items:center;padding:.2rem 0 0">' +
         '<span class="char-count" id="cc-comm">' + MAX_CHARS + '</span>' +
         '<button class="pbtn" onclick="postCommunity()">publicar</button>' +
@@ -1503,11 +1314,11 @@ function rCommunitySection() {
 }
 
 function rfeed() {
-  const posts = S.cat==='todos' ? [...S.posts] : S.posts.filter(p=>p.category===S.cat);
-  const composeCat = S.composeCat || CATS[1]; // default primera categoría
+  const posts = S.cat === 'todos' ? [...S.posts] : S.posts.filter(p => p.category === S.cat);
+  const composeCat = S.composeCat || CATS[1];
   const catsAndPosts = (
-    '<div class="cats">' + CATS.map(c=>'<button class="catb' + (S.cat===c?' on':'') + '" onclick="setcat(\'' + c + '\')">' + c + '</button>').join('') + '</div>' +
-    (posts.length===0
+    '<div class="cats">' + CATS.map(c => '<button class="catb' + (S.cat === c ? ' on' : '') + '" onclick="setcat(\'' + c + '\')">' + c + '</button>').join('') + '</div>' +
+    (posts.length === 0
       ? '<div class="empty"><div class="ei">🌸</div><div class="el">todavía no hay publicaciones aquí — sé el primero ✦</div></div>'
       : posts.map(rpost).join('') + '<div id="scroll-sentinel" style="height:1px;margin:1rem 0"></div>')
   );
@@ -1515,8 +1326,8 @@ function rfeed() {
   <div class="ftitle">inicio</div>
   <div class="fsub">comparte decoraciones, letras, símbolos y más</div>
   <div class="feed-tabs">
-    <button class="feed-tab${S.feedTab!=='siguiendo'&&S.feedTab!=='explorar'?' on':''}" onclick="setFeedTab('todos')">✦ todos</button>
-    <button class="feed-tab${S.feedTab==='siguiendo'?' on':''}" onclick="setFeedTab('siguiendo')">siguiendo</button>
+    <button class="feed-tab${S.feedTab !== 'siguiendo' && S.feedTab !== 'explorar' ? ' on' : ''}" onclick="setFeedTab('todos')">✦ todos</button>
+    <button class="feed-tab${S.feedTab === 'siguiendo' ? ' on' : ''}" onclick="setFeedTab('siguiendo')">siguiendo</button>
   </div>
   <div class="ccard">
     <div class="ctop">${avEl(S.me)}<textarea class="ctxt" id="ct" placeholder="comparte algo bonito..." maxlength="${MAX_CHARS}"></textarea></div>
@@ -1524,16 +1335,14 @@ function rfeed() {
       <span id="char-count" class="char-count">${MAX_CHARS}</span>
     </div>
     <div class="compose-cats">
-      ${CATS.slice(1).map(c=>`<button class="compose-catb${composeCat===c?' on':''}" onclick="setComposeCat('${c}')">${c}</button>`).join('')}
+      ${CATS.slice(1).map(c => `<button class="compose-catb${composeCat === c ? ' on' : ''}" onclick="setComposeCat('${c}')">${c}</button>`).join('')}
     </div>
     <div style="display:flex;justify-content:flex-end;margin-top:.65rem">
       <button class="pbtn" onclick="post()">publicar</button>
     </div>
   </div>
   <div class="explore-banner" onclick="goExplore()">
-    <div class="explore-banner-icon">
-      <i class="fi fi-rr-star"></i>
-    </div>
+    <div class="explore-banner-icon"><i class="fi fi-rr-star"></i></div>
     <div class="explore-banner-text">
       <div class="explore-banner-title">explorar destacados</div>
       <div class="explore-banner-sub">publicaciones populares de las últimas 48 horas</div>
@@ -1545,23 +1354,20 @@ function rfeed() {
 }
 
 function rpost(p) {
-  const likes = Array.isArray(p.likes)?p.likes:[];
-  const saved  = Array.isArray(p.saved)?p.saved:[];
-  const cmts   = Array.isArray(p.cmts)?p.cmts:[];
-  // Si es nuestro propio post, leer siempre el nombre actual de S.me para reflejar cambios sin recargar
-  // Para posts propios: usar datos frescos de S.me (avatar siempre actualizado)
-  // Para posts ajenos: preferir S.users (tiene URLs frescas de vprof) antes que author_av de DB (puede expirar)
-  const _cachedAuthor = p.user_id !== S.me.id ? S.users.find(x=>x.id===p.user_id) : null;
+  const likes = Array.isArray(p.likes) ? p.likes : [];
+  const saved  = Array.isArray(p.saved) ? p.saved : [];
+  const cmts   = Array.isArray(p.cmts) ? p.cmts : [];
+  const cachedAuthor = p.user_id !== S.me.id ? S.users.find(x => x.id === p.user_id) : null;
   const author = p.user_id === S.me.id
-    ? { name: S.me.user_metadata?.display_name||S.me.email, username: S.me.user_metadata?.display_name||S.me.email, avatar_url: S.me.user_metadata?.avatar_url||null }
-    : (_cachedAuthor
-        ? { name: _cachedAuthor.display_name||_cachedAuthor.username, username: _cachedAuthor.display_name||_cachedAuthor.username, avatar_url: _cachedAuthor.avatar_url||p.author_av||null }
-        : { name:p.username||'Usuario', username:p.username||'Usuario', avatar_url:p.author_av||null });
+    ? { name: S.me.user_metadata?.display_name || S.me.email, username: S.me.user_metadata?.display_name || S.me.email, avatar_url: S.me.user_metadata?.avatar_url || null }
+    : (cachedAuthor
+        ? { name: cachedAuthor.display_name || cachedAuthor.username, username: cachedAuthor.display_name || cachedAuthor.username, avatar_url: cachedAuthor.avatar_url || p.author_av || null }
+        : { name: p.username || 'Usuario', username: p.username || 'Usuario', avatar_url: p.author_av || null });
   const liked = likes.includes(S.me.id);
   const isSaved = saved.includes(S.me.id);
-  const own = p.user_id===S.me.id;
-  const mopen = S.menu===p.id;
-  const copen = S.coOpen[p.id];
+  const own = p.user_id === S.me.id;
+  const menuOpen = S.menu === p.id;
+  const cmtsOpen = S.coOpen[p.id];
   const cid = safeId(p.id);
 
   return `
@@ -1573,19 +1379,19 @@ function rpost(p) {
         <div class="ptime" data-ts="${p.created_at}">${ago(p.created_at)}</div>
       </div>
       <span class="pbadge">${esc(p.category)}</span>
-      ${(own||isOwner())?`<div class="mwrap">
-        <button class="dotsbtn${mopen?' open':''}" onclick="tmenu('${p.id}',event)">...</button>
-      </div>`:''}
+      ${(own || isOwner()) ? `<div class="mwrap">
+        <button class="dotsbtn${menuOpen ? ' open' : ''}" onclick="tmenu('${p.id}',event)">...</button>
+      </div>` : ''}
     </div>
     <div class="pcontent">${esc(p.body)}</div>
     <div class="pacts">
-      <button class="abtn like-btn${liked?' liked':''}" onclick="tlike('${p.id}')"><i class="${liked?'fi fi-sr-heart':'fi fi-rr-heart'}"></i> ${likes.length}</button>
-      <button class="abtn comment-btn${copen?' active':''}" onclick="tcmt('${p.id}')"><i class="${copen?'fi fi-sr-comment':'fi fi-rr-comment'}"></i> ${cmts.length}</button>
-      <button class="abtn save-btn${isSaved?' sav':''}" onclick="tsave('${p.id}')"><i class="${isSaved?'fi fi-sr-bookmark':'fi fi-rr-bookmark'}"></i> ${isSaved?'guardado':'guardar'}</button>
+      <button class="abtn like-btn${liked ? ' liked' : ''}" onclick="tlike('${p.id}')"><i class="${liked ? 'fi fi-sr-heart' : 'fi fi-rr-heart'}"></i> ${likes.length}</button>
+      <button class="abtn comment-btn${cmtsOpen ? ' active' : ''}" onclick="tcmt('${p.id}')"><i class="${cmtsOpen ? 'fi fi-sr-comment' : 'fi fi-rr-comment'}"></i> ${cmts.length}</button>
+      <button class="abtn save-btn${isSaved ? ' sav' : ''}" onclick="tsave('${p.id}')"><i class="${isSaved ? 'fi fi-sr-bookmark' : 'fi fi-rr-bookmark'}"></i> ${isSaved ? 'guardado' : 'guardar'}</button>
       <button class="abtn copy-btn" onclick="copyPost('${p.id}')" title="copiar texto"><i class="fi fi-rr-copy"></i> copiar</button>
       <button class="abtn share-btn" onclick="sharePost('${p.id}',event)" title="compartir"><i class="fi fi-rr-share"></i><span class="share-label"> compartir</span></button>
     </div>
-    ${copen?`<div class="csec">
+    ${cmtsOpen ? `<div class="csec">
       <div class="crow" id="crow-${cid}">
         <div class="cinput-wrap">
           <div class="reply-indicator" id="reply-ind-${cid}" style="display:none"></div>
@@ -1593,25 +1399,24 @@ function rpost(p) {
         </div>
         <button class="sendbtn" onclick="scmt('${p.id}')">↑</button>
       </div>
-      ${cmts.map((c,ci)=>renderComment(c, p.id, cid)).join('')}
-    </div>`:''}
+      ${cmts.map(c => renderComment(c, p.id, cid)).join('')}
+    </div>` : ''}
   </div>`;
 }
 
-// --- HELPER: RENDERIZAR UN COMENTARIO (con soporte de respuestas) ---
 function renderComment(c, postId, cid) {
   const isReply = !!c.replyTo;
-  const replyLabel = isReply ? `<span class="cmt-reply-to">↳ ${esc(c.replyToName||'')}</span>` : '';
+  const replyLabel = isReply ? `<span class="cmt-reply-to">↳ ${esc(c.replyToName || '')}</span>` : '';
   const likedCmt = Array.isArray(c.likes) && c.likes.includes(S.me.id);
-  return `<div class="cm${isReply?' cm-reply':''}" id="cmt-${c.id}">
-    <div onclick="vprof('${c.uid}')" style="cursor:pointer" title="ver perfil">${avEl({name:c.un,username:c.un,avatar_url:c.av||null})}</div>
+  return `<div class="cm${isReply ? ' cm-reply' : ''}" id="cmt-${c.id}">
+    <div onclick="vprof('${c.uid}')" style="cursor:pointer" title="ver perfil">${avEl({ name: c.un, username: c.un, avatar_url: c.av || null })}</div>
     <div class="cmb">
       <div class="cma">
         <span>${esc(c.un)}</span>
         ${replyLabel}
         <span class="cmt-time" data-ts="${c.t}">${ago(c.t)}</span>
-        <button class="cmt-like-btn${likedCmt?' liked':''}" data-cmt-like="${c.id}" onclick="tlikeCmt('${postId}','${c.id}')"><i class="${likedCmt?'fi fi-sr-heart':'fi fi-rr-heart'}"></i><span class="cmt-like-count">${c.likes&&c.likes.length>0?c.likes.length:''}</span></button>
-        <button class="cmt-reply-btn" onclick="startReply('${postId}','${c.id}','${c.un.replace(/'/g,"\\'")}',event)" title="responder">↩ responder</button>
+        <button class="cmt-like-btn${likedCmt ? ' liked' : ''}" data-cmt-like="${c.id}" onclick="tlikeCmt('${postId}','${c.id}')"><i class="${likedCmt ? 'fi fi-sr-heart' : 'fi fi-rr-heart'}"></i><span class="cmt-like-count">${c.likes && c.likes.length > 0 ? c.likes.length : ''}</span></button>
+        <button class="cmt-reply-btn" onclick="startReply('${postId}','${c.id}','${c.un.replace(/'/g, "\\'")}',event)" title="responder">↩ responder</button>
         ${c.uid === S.me.id ? `<button class="cmt-del" onclick="dcmt('${postId}', '${c.id}')" title="eliminar comentario">✕</button>` : ''}
       </div>
       <div class="cmt">${esc(c.txt)}</div>
@@ -1619,28 +1424,22 @@ function renderComment(c, postId, cid) {
   </div>`;
 }
 
-// --- RESPONDER COMENTARIO ---
 function startReply(postId, cmtId, cmtUsername, e) {
   if (e) e.stopPropagation();
-  postId = isNaN(postId)?postId:Number(postId);
+  postId = isNaN(postId) ? postId : Number(postId);
   const cid = safeId(postId);
   S.replyTo[postId] = { cmtId, un: cmtUsername };
-  // Mostrar indicador de respuesta
   const ind = document.getElementById(`reply-ind-${cid}`);
   if (ind) {
     ind.style.display = 'flex';
     ind.innerHTML = `<span>↩ respondiendo a <b>${esc(cmtUsername)}</b></span><button class="reply-cancel-btn" onclick="cancelReply('${postId}')">✕</button>`;
   }
-  // Actualizar placeholder del input
   const inp = document.getElementById(cid);
-  if (inp) {
-    inp.placeholder = `responder a ${cmtUsername}...`;
-    inp.focus();
-  }
+  if (inp) { inp.placeholder = `responder a ${cmtUsername}...`; inp.focus(); }
 }
 
 function cancelReply(postId) {
-  postId = isNaN(postId)?postId:Number(postId);
+  postId = isNaN(postId) ? postId : Number(postId);
   const cid = safeId(postId);
   delete S.replyTo[postId];
   const ind = document.getElementById(`reply-ind-${cid}`);
@@ -1649,37 +1448,29 @@ function cancelReply(postId) {
   if (inp) inp.placeholder = 'escribe un comentario...';
 }
 
-// --- COMPARTIR POST ---
 function sharePost(id, e) {
   if (e) e.stopPropagation();
-  id = isNaN(id)?id:Number(id);
-  // Construir URL del post
-  const base = window.location.origin;
-  const url = `${base}/post.html?id=${id}`;
-  // Menú de opciones de compartir
+  id = isNaN(id) ? id : Number(id);
+  const url = `${window.location.origin}/post.html?id=${id}`;
   showShareMenu(id, url, e);
 }
 
 function showShareMenu(postId, url, e) {
-  // Eliminar menú previo si existe
   const prev = document.getElementById('shareMenuPortal');
   if (prev) prev.remove();
 
   const btn = e?.currentTarget || e?.target;
   const rect = btn ? btn.getBoundingClientRect() : { bottom: 100, right: 100 };
-  const menuTop = rect.bottom + 6;
-  const menuRight = window.innerWidth - rect.right;
 
   const el = document.createElement('div');
   el.id = 'shareMenuPortal';
-  el.innerHTML = `<div class="pmenu share-menu" style="position:fixed;top:${menuTop}px;right:${menuRight}px;z-index:9999;min-width:200px">
+  el.innerHTML = `<div class="pmenu share-menu" style="position:fixed;top:${rect.bottom + 6}px;right:${window.innerWidth - rect.right}px;z-index:9999;min-width:200px">
     <div class="share-menu-title">compartir publicación</div>
     <button class="mi" onclick="copyPostLink('${postId}','${encodeURIComponent(url)}')"><i class="fi fi-rr-link"></i> copiar enlace</button>
     ${navigator.share ? `<button class="mi" onclick="nativeShare('${postId}','${encodeURIComponent(url)}')"><i class="fi fi-rr-share"></i> compartir...</button>` : ''}
   </div>`;
   document.body.appendChild(el);
 
-  // Cerrar al click fuera
   setTimeout(() => {
     const closeHandler = (ev) => {
       if (!ev.target.closest('#shareMenuPortal') && !ev.target.closest('.share-btn')) {
@@ -1702,7 +1493,7 @@ function copyPostLink(postId, encodedUrl) {
 
 function nativeShare(postId, encodedUrl) {
   const url = decodeURIComponent(encodedUrl);
-  postId = isNaN(postId)?postId:Number(postId);
+  postId = isNaN(postId) ? postId : Number(postId);
   const el = document.getElementById('shareMenuPortal');
   if (el) el.remove();
   const p = findPost(postId);
@@ -1715,10 +1506,7 @@ function nativeShare(postId, encodedUrl) {
   }
 }
 
-// PERFIL
 function rprofile() {
-  // Guardia: si puid es null (race condition con fetchFolders u otro render async),
-  // no renderizar perfil — mostrar loading hasta que puid esté disponible
   if (!S.puid) {
     return '<div class="ppage"><div style="text-align:center;padding:3rem;opacity:.4">cargando perfil...</div></div>';
   }
@@ -1728,55 +1516,45 @@ function rprofile() {
   if (own) {
     user = S.me;
   } else {
-    // S.users se actualiza con datos frescos en vprof(); usar fallback del post mientras carga
     const cached = S.users.find(x => x.id === S.puid);
-    const authorData = S.posts.find(p => p.user_id === S.puid);
-    // Buscar el autor también en comunidad y siguiendo para mejor fallback
-    const authorDataFallback = authorData
+    const fallbackPost = S.posts.find(p => p.user_id === S.puid)
       || S.communityPosts?.find(p => p.user_id === S.puid)
       || S.followingPosts?.find(p => p.user_id === S.puid);
     user = cached || {
       id: S.puid,
-      username: authorDataFallback?.username || null,
-      display_name: authorDataFallback?.username || null,
-      avatar_url: authorDataFallback?.author_av || null,
-      bio: undefined  // undefined = aún no cargó; '' = usuario sin bio
+      username: fallbackPost?.username || null,
+      display_name: fallbackPost?.username || null,
+      avatar_url: fallbackPost?.author_av || null,
+      bio: undefined
     };
   }
 
-  // Resolución robusta de nombre y bio (distintos campos según si es propio o ajeno)
-  const _nameRaw = own
+  const nameRaw = own
     ? (S.me.user_metadata?.display_name || S.me.name || S.me.email || 'Usuario')
     : (user.display_name || user.username || user.name || null);
-  const displayName = _nameRaw ? esc(_nameRaw) : '<span style="color:var(--tx3);font-style:italic;font-size:.9rem">cargando...</span>';
-  // Para perfil propio: auth metadata > _profileBio (cargado desde profiles al abrir modal) > ''
-  // Para perfil ajeno: S.users cache (cargado en vprof) > ''
+  const displayName = nameRaw ? esc(nameRaw) : '<span style="color:var(--tx3);font-style:italic;font-size:.9rem">cargando...</span>';
+
   const bioRaw = own
     ? (S.me.user_metadata?.bio || S._profileBio || '')
     : (user.bio || '');
-  // Solo mostrar "cargando..." si es perfil ajeno Y user.bio es undefined (aún no llegaron datos del fetch)
-  // Si bio es '' (cadena vacía), el usuario simplemente no escribió bio — mostrar "sin biografía aún"
-  const bioLoading = !own && (user.bio === undefined);
+  const bioLoading = !own && user.bio === undefined;
   const bioDisplay = bioLoading
     ? '<span style="color:var(--tx3);font-style:italic;font-size:.8rem">cargando...</span>'
     : esc(bioRaw || 'sin biografía aún').replace(/\n/g, '<br/>');
 
   const tab = S.ptab;
-  // Usar S.profilePosts[puid] si está disponible (evita mezclar con el feed)
-  // Para perfil propio, también incluir S.posts propios (por si se publicó algo en esta sesión)
-  const _profileArr = (S.profilePosts && S.profilePosts[S.puid])
+  const profilePosts = (S.profilePosts && S.profilePosts[S.puid])
     ? S.profilePosts[S.puid]
     : S.posts.filter(p => p.user_id === S.puid);
-  const myp = _profileArr;
-  const svd = S.savedPosts || [];
-  const col = _profileArr.filter(p => p.col);
+  const savedPosts = S.savedPosts || [];
+  const collections = profilePosts.filter(p => p.col);
   const userFolders = S.folders.filter(f => f.user_id === S.puid);
 
   return `
   <div class="ppage">
     <div class="pavwrap">
       <div class="pav" ${own ? 'onclick="upavatar()"' : ''} style="${own ? 'cursor:pointer' : 'cursor:default'}">
-        ${avEl(user, true, own)} 
+        ${avEl(user, true, own)}
       </div>
     </div>
     <div class="pinfo">
@@ -1789,9 +1567,9 @@ function rprofile() {
       <button class="ptab${tab === 'col' ? ' on' : ''}" onclick="stptab('col')">colecciones</button>
       ${own ? `<button class="ptab${tab === 'saved' ? ' on' : ''}" onclick="stptab('saved')">guardados</button>` : ''}
     </div>
-    ${tab === 'posts' ? renderProfilePosts(myp, S.puid) : ''}
-    ${tab === 'saved' ? (svd.length ? svd.map(rpost).join('') : `<div class="empty"><div class="el">aún no guardaste nada</div></div>`) : ''}
-    ${tab === 'col' ? renderCollections(userFolders, col, own) : ''}
+    ${tab === 'posts' ? renderProfilePosts(profilePosts, S.puid) : ''}
+    ${tab === 'saved' ? (savedPosts.length ? savedPosts.map(rpost).join('') : `<div class="empty"><div class="el">aún no guardaste nada</div></div>`) : ''}
+    ${tab === 'col' ? renderCollections(userFolders, collections, own) : ''}
   </div>
   ${S.modal ? `<div class="mov profile-edit-modal" onclick="mclose(event)">
     <div class="mdl">
@@ -1806,11 +1584,11 @@ function rprofile() {
   </div>` : ''}`;
 }
 
-function renderProfilePosts(myp, profileUid) {
+function renderProfilePosts(posts, profileUid) {
   const pinnedId = S.pinnedPosts[profileUid];
-  const pinned = pinnedId ? myp.find(p => p.id === pinnedId) : null;
-  const rest = pinned ? myp.filter(p => p.id !== pinnedId) : myp;
-  if (myp.length === 0) return `<div class="empty"><div class="el">aún no hay publicaciones</div></div>`;
+  const pinned = pinnedId ? posts.find(p => p.id === pinnedId) : null;
+  const rest = pinned ? posts.filter(p => p.id !== pinnedId) : posts;
+  if (posts.length === 0) return `<div class="empty"><div class="el">aún no hay publicaciones</div></div>`;
   let html = '';
   if (pinned) {
     html += `<div class="pinned-section">
@@ -1823,31 +1601,31 @@ function renderProfilePosts(myp, profileUid) {
 }
 
 function renderCollections(userFolders, col, own) {
-  const uncategorized = col.filter(p => !p.folder_id || !userFolders.find(f=>f.id===p.folder_id));
+  const uncategorized = col.filter(p => !p.folder_id || !userFolders.find(f => f.id === p.folder_id));
   let html = '';
   if (own) html += `<div class="folder-toolbar"><button class="folder-new-btn" onclick="openCreateFolder()">+ nueva carpeta</button></div>`;
-  if (col.length===0 && userFolders.length===0) {
-    return html + `<div class="empty"><div class="ei">📂</div><div class="el">${own?'usa el menú ··· de tus publicaciones para guardar en colecciónes':'este usuario no tiene colecciones aún'}</div></div>`;
+  if (col.length === 0 && userFolders.length === 0) {
+    return html + `<div class="empty"><div class="ei">📂</div><div class="el">${own ? 'usa el menú ··· de tus publicaciones para guardar en colecciónes' : 'este usuario no tiene colecciones aún'}</div></div>`;
   }
   if (userFolders.length > 0) {
     html += `<div class="folders-grid">`;
     for (const f of userFolders) {
-      const fPosts = col.filter(p=>p.folder_id===f.id);
-      const isActive = S.activeFolderTab===f.id;
-      html += `<div class="folder-card${isActive?' open':''}">
+      const fPosts = col.filter(p => p.folder_id === f.id);
+      const isActive = S.activeFolderTab === f.id;
+      html += `<div class="folder-card${isActive ? ' open' : ''}">
         <div class="folder-card-head" onclick="toggleFolderView('${f.id}')">
           <span class="folder-icon">📁</span>
           <span class="folder-name">${esc(f.name)}</span>
           <span class="folder-count">${fPosts.length}</span>
-          ${own?`<div class="folder-actions" onclick="event.stopPropagation()">
+          ${own ? `<div class="folder-actions" onclick="event.stopPropagation()">
             <button class="folder-act-btn" onclick="openRenameFolder('${f.id}')" title="renombrar">✎</button>
             <button class="folder-act-btn del" onclick="confirmAction('¿Eliminar la carpeta?',()=>deleteFolder('${f.id}'))" title="eliminar">✕</button>
-          </div>`:''}
-          <span class="folder-chevron">${isActive?'▲':'▼'}</span>
+          </div>` : ''}
+          <span class="folder-chevron">${isActive ? '▲' : '▼'}</span>
         </div>
-        ${isActive?`<div class="folder-posts">
-          ${fPosts.length===0?`<div class="empty"><div class="el">esta carpeta está vacía</div></div>`:fPosts.map(rpost).join('')}
-        </div>`:''}
+        ${isActive ? `<div class="folder-posts">
+          ${fPosts.length === 0 ? `<div class="empty"><div class="el">esta carpeta está vacía</div></div>` : fPosts.map(rpost).join('')}
+        </div>` : ''}
       </div>`;
     }
     html += `</div>`;
@@ -1858,12 +1636,9 @@ function renderCollections(userFolders, col, own) {
   return html;
 }
 
-// --- ACCIONES ---
 function setcat(c) {
   S.cat = c;
   S.menu = null;
-  // FIX: siempre re-fetchear al cambiar categoría para traer los posts
-  // correctos de la BD (el filtro local fallaba con paginación de 10 posts)
   fetchPosts(true);
 }
 function setFeedTab(tab) {
@@ -1873,33 +1648,31 @@ function setFeedTab(tab) {
   render();
 }
 window.setFeedTab = setFeedTab;
+
 function setComposeCat(c) {
   S.composeCat = c;
-  // Actualizar solo las pills sin re-render completo (evita flash del textarea)
   document.querySelectorAll('.compose-catb').forEach(btn => {
     btn.classList.toggle('on', btn.textContent.trim() === c);
   });
 }
+
 function stptab(t) {
   S.ptab = t; S.activeFolderTab = null;
   if (t === 'saved') {
-    // Mostrar estado de carga y fetchear desde Supabase.
-    // fetchSavedPosts() llama render() al terminar — no llamar render() aquí
-    // para evitar que se muestre vacío antes de que lleguen los datos.
-    S.savedPosts = []; // limpiar para mostrar "cargando..." si rprofile lo detecta
+    S.savedPosts = [];
     render();
     fetchSavedPosts();
   } else {
     render();
   }
-  window.scrollTo({top:0,behavior:"smooth"});
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
-function tmenu(id,e) {
+
+function tmenu(id, e) {
   e.stopPropagation();
-  id=isNaN(id)?id:Number(id);
-  if (S.menu===id) { S.menu=null; renderPostMenu(); return; }
-  S.menu=id;
-  // Capturar posición del botón para el menú flotante
+  id = isNaN(id) ? id : Number(id);
+  if (S.menu === id) { S.menu = null; renderPostMenu(); return; }
+  S.menu = id;
   const btn = e.currentTarget;
   const rect = btn.getBoundingClientRect();
   S.menuPos = { top: rect.bottom + 6, right: window.innerWidth - rect.right };
@@ -1908,13 +1681,12 @@ function tmenu(id,e) {
 
 function renderPostMenu() {
   let el = document.getElementById('postMenuPortal');
-  if (!el) { el = document.createElement('div'); el.id='postMenuPortal'; document.body.appendChild(el); }
-  if (!S.menu || !S.menuPos) { el.innerHTML=''; return; }
+  if (!el) { el = document.createElement('div'); el.id = 'postMenuPortal'; document.body.appendChild(el); }
+  if (!S.menu || !S.menuPos) { el.innerHTML = ''; return; }
   const p = findPost(S.menu);
-  if (!p) { el.innerHTML=''; return; }
+  if (!p) { el.innerHTML = ''; return; }
   const { top, right } = S.menuPos;
   const ownPost = p.user_id === S.me.id;
-  // Si es dueña viendo un post ajeno: solo mostrar opción de eliminar
   if (!ownPost && isOwner()) {
     el.innerHTML = `<div class="pmenu" style="position:fixed;top:${top}px;right:${right}px;z-index:9999;min-width:170px">
       <button class="mi del" onclick="confirmAction('¿Eliminar esta publicación? No se puede deshacer.',()=>dpost(${p.id}))"><i class="fi fi-rr-trash"></i> eliminar</button>
@@ -1923,88 +1695,76 @@ function renderPostMenu() {
   }
   el.innerHTML = `<div class="pmenu" style="position:fixed;top:${top}px;right:${right}px;z-index:9999;min-width:170px">
     <button class="mi" onclick="openEditPost('${p.id}')"><i class="fi fi-rr-edit"></i> editar</button>
-    <button class="mi${S.pinnedPosts[S.me.id]===p.id?' pin-active':''}" onclick="pinPost('${p.id}')"><i class="${S.pinnedPosts[S.me.id]===p.id?'fi fi-sr-thumbtack':'fi fi-rr-thumbtack'}"></i> ${S.pinnedPosts[S.me.id]===p.id?'desanclar':'anclar en perfil'}</button>
-    <button class="mi" onclick="tocol('${p.id}')"><i class="fi fi-rr-apps"></i> ${p.col?'quitar de colección':'guardar en colección'}</button>
-    ${p.col?`<button class="mi" onclick="openFolderPicker('${p.id}')"><i class="fi fi-rr-folder"></i> ${p.folder_id?'mover de carpeta':'poner en carpeta'}</button>`:''}
+    <button class="mi${S.pinnedPosts[S.me.id] === p.id ? ' pin-active' : ''}" onclick="pinPost('${p.id}')"><i class="${S.pinnedPosts[S.me.id] === p.id ? 'fi fi-sr-thumbtack' : 'fi fi-rr-thumbtack'}"></i> ${S.pinnedPosts[S.me.id] === p.id ? 'desanclar' : 'anclar en perfil'}</button>
+    <button class="mi" onclick="tocol('${p.id}')"><i class="fi fi-rr-apps"></i> ${p.col ? 'quitar de colección' : 'guardar en colección'}</button>
+    ${p.col ? `<button class="mi" onclick="openFolderPicker('${p.id}')"><i class="fi fi-rr-folder"></i> ${p.folder_id ? 'mover de carpeta' : 'poner en carpeta'}</button>` : ''}
     <button class="mi del" onclick="confirmAction('¿Eliminar esta publicación? No se puede deshacer.',()=>dpost(${p.id}))"><i class="fi fi-rr-trash"></i> eliminar</button>
   </div>`;
 }
 
 document.addEventListener('click', e => {
-  if (S.menu && !e.target.closest('.mwrap') && !e.target.closest('#postMenuPortal')) { S.menu=null; renderPostMenu(); }
+  if (S.menu && !e.target.closest('.mwrap') && !e.target.closest('#postMenuPortal')) { S.menu = null; renderPostMenu(); }
   if (S.searchOpen && !e.target.closest('#searchOverlay') && !e.target.closest('#ns')) toggleSearch();
-  // Fix móvil: excluir también #mob-notif para que el tap no abra+cierre al mismo tiempo
   if (S.notifOpen && !e.target.closest('#notifPanel') && !e.target.closest('#notif-btn') && !e.target.closest('#mob-notif')) {
-    S.notifOpen=false; renderNotifPanel();
+    S.notifOpen = false; renderNotifPanel();
   }
 });
 
-// Cerrar el menú flotante al hacer scroll
 window.addEventListener('scroll', () => {
-  if (S.menu) { S.menu=null; renderPostMenu(); }
+  if (S.menu) { S.menu = null; renderPostMenu(); }
 }, { passive: true });
 
 async function post() {
   const txt = document.getElementById('ct').value.trim();
   const cat = S.composeCat || CATS[1];
   if (!txt) return toast('escribe algo primero');
-  if (txt.length > MAX_CHARS) return toast('máximo '+MAX_CHARS+' caracteres');
+  if (txt.length > MAX_CHARS) return toast('máximo ' + MAX_CHARS + ' caracteres');
   const btn = document.querySelector('.pbtn');
-  if (btn) { btn.textContent='publicando...'; btn.disabled=true; }
-  const { data, error } = await db.from('posts').insert([{ body:txt, category:cat, user_id:S.me.id, username:S.me.user_metadata?.display_name||S.me.email, author_av:S.me.user_metadata?.avatar_url||null }]).select();
-  if (btn) { btn.textContent='publicar'; btn.disabled=false; }
-  if (error) toast('Error: '+error.message);
-  else {
-    const ctEl = document.getElementById('ct');
-    if (ctEl) { ctEl.value=''; ctEl.style.height=''; ctEl.style.minHeight=''; }
-    // Añadir nuevo post al inicio con animación
-    if (data && data[0]) {
-      const np = { ...data[0], likes: [], cmts: [], saved: [], t: data[0].created_at };
-      S.posts.unshift(np);
-    }
-    render();
-    // Marcar el primer post como nuevo para la animación
-    setTimeout(() => {
-      const first = document.querySelector('.pcard');
-      if (first) { first.classList.add('new-post'); setTimeout(()=>first.classList.remove('new-post'), 400); }
-      setupInfiniteScroll();
-    }, 30);
-    toast('publicado');
-  }
+  if (btn) { btn.textContent = 'publicando...'; btn.disabled = true; }
+  const { data, error } = await db.from('posts').insert([{ body: txt, category: cat, user_id: S.me.id, username: S.me.user_metadata?.display_name || S.me.email, author_av: S.me.user_metadata?.avatar_url || null }]).select();
+  if (btn) { btn.textContent = 'publicar'; btn.disabled = false; }
+  if (error) { toast('Error: ' + error.message); return; }
+  const ctEl = document.getElementById('ct');
+  if (ctEl) { ctEl.value = ''; ctEl.style.height = ''; ctEl.style.minHeight = ''; }
+  if (data && data[0]) S.posts.unshift({ ...data[0], likes: [], cmts: [], saved: [], t: data[0].created_at });
+  render();
+  setTimeout(() => {
+    const first = document.querySelector('.pcard');
+    if (first) { first.classList.add('new-post'); setTimeout(() => first.classList.remove('new-post'), 400); }
+    setupInfiniteScroll();
+  }, 30);
+  toast('publicado');
 }
 
 function copyPost(id) {
-  id = isNaN(id)?id:Number(id);
-  const p = findPost(id); if(!p) return;
+  id = isNaN(id) ? id : Number(id);
+  const p = findPost(id); if (!p) return;
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(p.body).then(()=>toast('copiado al portapapeles')).catch(()=>fallbackCopy(p.body));
+    navigator.clipboard.writeText(p.body).then(() => toast('copiado al portapapeles')).catch(() => fallbackCopy(p.body));
   } else { fallbackCopy(p.body); }
 }
 
 function fallbackCopy(text) {
   const ta = document.createElement('textarea');
-  ta.value = text; ta.style.cssText='position:fixed;opacity:0;top:0;left:0';
+  ta.value = text; ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
   document.body.appendChild(ta); ta.focus(); ta.select();
   try { document.execCommand('copy'); toast('copiado al portapapeles'); } catch(e) { toast('no se pudo copiar'); }
   document.body.removeChild(ta);
 }
 
-// Helper: busca un post en S.posts O en S.communityPosts
 function findPost(id) {
-  return S.posts.find(x=>x.id===id) || S.communityPosts.find(x=>x.id===id) || null;
+  return S.posts.find(x => x.id === id) || S.communityPosts.find(x => x.id === id) || null;
 }
 window.findPost = findPost;
 
 async function tlike(id) {
-  id=isNaN(id)?id:Number(id);
-  const p=findPost(id); if(!p) return;
-  if(!Array.isArray(p.likes)) p.likes=[];
-  const i=p.likes.indexOf(S.me.id);
-  const wasLiked = i>-1;
-  if(wasLiked) p.likes.splice(i,1); else p.likes.push(S.me.id);
-  // Patch solo el botón de like sin re-render completo
+  id = isNaN(id) ? id : Number(id);
+  const p = findPost(id); if (!p) return;
+  if (!Array.isArray(p.likes)) p.likes = [];
+  const i = p.likes.indexOf(S.me.id);
+  const wasLiked = i > -1;
+  if (wasLiked) p.likes.splice(i, 1); else p.likes.push(S.me.id);
   const cid = safeId(id);
-  const btn = document.querySelector(`#post-${cid} .abtn.liked, #post-${cid} .abtn:first-child`);
   const likeBtn = document.querySelector(`#post-${cid} .pacts .like-btn`);
   if (likeBtn) {
     const isNowLiked = p.likes.includes(S.me.id);
@@ -2012,27 +1772,21 @@ async function tlike(id) {
     if (icon) icon.className = isNowLiked ? 'fi fi-sr-heart' : 'fi fi-rr-heart';
     likeBtn.childNodes[likeBtn.childNodes.length - 1].textContent = ' ' + p.likes.length;
     likeBtn.className = `abtn like-btn${isNowLiked ? ' liked' : ''}`;
-    // Animación pop al dar like
-    if (isNowLiked) {
-      likeBtn.classList.add('pop');
-      setTimeout(() => likeBtn.classList.remove('pop'), 260);
-    }
+    if (isNowLiked) { likeBtn.classList.add('pop'); setTimeout(() => likeBtn.classList.remove('pop'), 260); }
   }
-  const {error}=await db.from('posts').update({likes:p.likes}).eq('id',id);
-  if(error) { toast('Error al dar like'); render(); }
+  const { error } = await db.from('posts').update({ likes: p.likes }).eq('id', id);
+  if (error) { toast('Error al dar like'); render(); }
   else if (!wasLiked && p.user_id !== S.me.id) {
-    const myName = S.me.user_metadata?.display_name||S.me.email;
-    saveNotif(p.user_id, 'like', myName, id, p.body);
+    saveNotif(p.user_id, 'like', S.me.user_metadata?.display_name || S.me.email, id, p.body);
   }
 }
 
 async function tsave(id) {
-  id=isNaN(id)?id:Number(id);
-  const p=findPost(id); if(!p) return;
-  if(!Array.isArray(p.saved)) p.saved=[];
-  const i=p.saved.indexOf(S.me.id);
-  if(i>-1){p.saved.splice(i,1);}else{p.saved.push(S.me.id);}
-  // Patch solo el botón de guardar sin re-render completo
+  id = isNaN(id) ? id : Number(id);
+  const p = findPost(id); if (!p) return;
+  if (!Array.isArray(p.saved)) p.saved = [];
+  const i = p.saved.indexOf(S.me.id);
+  if (i > -1) { p.saved.splice(i, 1); } else { p.saved.push(S.me.id); }
   const cid = safeId(id);
   const saveBtn = document.querySelector(`#post-${cid} .save-btn`);
   if (saveBtn) {
@@ -2040,80 +1794,65 @@ async function tsave(id) {
     const icon = saveBtn.querySelector('i');
     if (icon) icon.className = isSaved ? 'fi fi-sr-bookmark' : 'fi fi-rr-bookmark';
     const textNodes = [...saveBtn.childNodes].filter(n => n.nodeType === 3);
-    if (textNodes.length) textNodes[textNodes.length-1].textContent = ` ${isSaved ? 'guardado' : 'guardar'}`;
+    if (textNodes.length) textNodes[textNodes.length - 1].textContent = ` ${isSaved ? 'guardado' : 'guardar'}`;
     saveBtn.className = `abtn save-btn${isSaved ? ' sav' : ''}`;
-    if (isSaved && icon) {
-      icon.classList.add('pop');
-      setTimeout(() => icon.classList.remove('pop'), 260);
-    }
+    if (isSaved && icon) { icon.classList.add('pop'); setTimeout(() => icon.classList.remove('pop'), 260); }
   }
   toast(p.saved.includes(S.me.id) ? 'guardado' : 'eliminado de guardados');
-  const {error}=await db.from('posts').update({saved:p.saved}).eq('id',id);
-  if(error) { toast('Error al guardar'); render(); return; }
-  // Sincronizar S.savedPosts en memoria para reflejar el cambio
+  const { error } = await db.from('posts').update({ saved: p.saved }).eq('id', id);
+  if (error) { toast('Error al guardar'); render(); return; }
   if (!Array.isArray(S.savedPosts)) S.savedPosts = [];
   const inSaved = S.savedPosts.findIndex(x => x.id === id);
   if (p.saved.includes(S.me.id)) {
-    // Agregar a savedPosts si no está
     if (inSaved === -1) S.savedPosts.unshift(p);
   } else {
-    // Quitar de savedPosts si estaba
     if (inSaved > -1) S.savedPosts.splice(inSaved, 1);
   }
 }
 
 async function tocol(id) {
-  id=isNaN(id)?id:Number(id);
-  const p=findPost(id); if(!p) return;
-  p.col=!p.col; if(!p.col) p.folder_id=null;
-  // Cerrar menú sin re-render completo
-  S.menu=null;
+  id = isNaN(id) ? id : Number(id);
+  const p = findPost(id); if (!p) return;
+  p.col = !p.col; if (!p.col) p.folder_id = null;
+  S.menu = null;
   const cid = safeId(id);
   const card = document.getElementById('post-' + cid);
   if (card) { const menu = card.querySelector('.pmenu'); if (menu) menu.remove(); }
-  const {error}=await db.from('posts').update({col:p.col,folder_id:p.folder_id||null}).eq('id',id);
-  if(error) toast('Error al actualizar colección');
-  else { toast(p.col?'añadido a colección':'eliminado de colección'); }
+  const { error } = await db.from('posts').update({ col: p.col, folder_id: p.folder_id || null }).eq('id', id);
+  if (error) toast('Error al actualizar colección');
+  else toast(p.col ? 'añadido a colección' : 'eliminado de colección');
 }
 
 async function dpost(id) {
-  id=isNaN(id)?id:Number(id);
-  const {error}=await db.from('posts').delete().eq('id',id);
-  if(error) toast('Error al eliminar');
-  else { S.posts=S.posts.filter(x=>x.id!==id); S.communityPosts=S.communityPosts.filter(x=>x.id!==id); S.menu=null; toast('publicación eliminada'); render(); }
+  id = isNaN(id) ? id : Number(id);
+  const { error } = await db.from('posts').delete().eq('id', id);
+  if (error) toast('Error al eliminar');
+  else {
+    S.posts = S.posts.filter(x => x.id !== id);
+    S.communityPosts = S.communityPosts.filter(x => x.id !== id);
+    S.menu = null; toast('publicación eliminada'); render();
+  }
 }
 
 function tcmt(id) {
-  id=isNaN(id)?id:Number(id);
-  S.coOpen[id]=!S.coOpen[id];
+  id = isNaN(id) ? id : Number(id);
+  S.coOpen[id] = !S.coOpen[id];
   const cid = safeId(id);
   const card = document.getElementById(`post-${cid}`);
   if (!card) { render(); return; }
   const p = findPost(id);
   if (!p) { render(); return; }
-  // Update comment button icon and class
   const cmtBtn = card.querySelector('.pacts .comment-btn');
   if (cmtBtn) {
     const isOpen = S.coOpen[id];
     const icon = cmtBtn.querySelector('i');
     if (icon) icon.className = isOpen ? 'fi fi-sr-comment' : 'fi fi-rr-comment';
     cmtBtn.className = `abtn comment-btn${isOpen ? ' active' : ''}`;
-    if (isOpen && icon) {
-      icon.classList.add('pop');
-      setTimeout(() => icon.classList.remove('pop'), 260);
-    }
+    if (isOpen && icon) { icon.classList.add('pop'); setTimeout(() => icon.classList.remove('pop'), 260); }
   }
-  // Patch solo la sección de comentarios del post específico
   let csec = card.querySelector('.csec');
-  if (!S.coOpen[id]) {
-    if (csec) csec.remove();
-    return;
-  }
-  if (!csec) {
-    csec = document.createElement('div');
-    csec.className = 'csec';
-    card.appendChild(csec);
-  }
+  if (!S.coOpen[id]) { if (csec) csec.remove(); return; }
+  if (!csec) { csec = document.createElement('div'); csec.className = 'csec'; card.appendChild(csec); }
   const cmts = Array.isArray(p.cmts) ? p.cmts : [];
   const replyState = S.replyTo[id];
   csec.innerHTML = `
@@ -2126,25 +1865,22 @@ function tcmt(id) {
       </div>
       <button class="sendbtn" onclick="scmt('${id}')">↑</button>
     </div>
-    ${cmts.map((c)=>renderComment(c, id, cid)).join('')}`;
+    ${cmts.map(c => renderComment(c, id, cid)).join('')}`;
   setTimeout(() => document.getElementById(cid)?.focus(), 30);
 }
 
 async function scmt(id) {
   id = isNaN(id) ? id : Number(id);
-  const inp = document.getElementById(safeId(id)); 
+  const inp = document.getElementById(safeId(id));
   if (!inp) return;
-  const txt = inp.value.trim(); 
+  const txt = inp.value.trim();
   if (!txt) return;
-
-  const p = findPost(id); 
+  const p = findPost(id);
   if (!p) return;
   if (!Array.isArray(p.cmts)) p.cmts = [];
-
   const myName = S.me.user_metadata?.display_name || S.me.email;
   const replyState = S.replyTo[id];
-  
-  const nuevoComentario = {
+  const newComment = {
     id: 'c' + Date.now() + Math.random().toString(36).slice(2, 5),
     uid: S.me.id,
     un: myName,
@@ -2153,35 +1889,24 @@ async function scmt(id) {
     t: new Date().toISOString(),
     ...(replyState ? { replyTo: replyState.cmtId, replyToName: replyState.un } : {}),
   };
-
-  p.cmts.push(nuevoComentario);
-
+  p.cmts.push(newComment);
   const { error } = await db.from('posts').update({ cmts: p.cmts }).eq('id', id);
-
   if (error) {
     p.cmts.pop();
     toast('Error al comentar');
   } else {
     inp.value = '';
-    // Limpiar estado de respuesta
     cancelReply(id);
     if (p.user_id !== S.me.id) {
-      const myName2 = S.me.user_metadata?.display_name||S.me.email;
-      saveNotif(p.user_id, 'comment', myName2, id, p.body);
+      saveNotif(p.user_id, 'comment', myName, id, p.body);
     }
-    // Patch solo la sección de comentarios sin re-render completo
     const cid = safeId(id);
     const card = document.getElementById(`post-${cid}`);
     const csec = card?.querySelector('.csec');
     if (csec) {
-      // Añadir el nuevo comentario al DOM usando renderComment
-      const cmDiv = document.createElement('div');
-      cmDiv.outerHTML; // just to force parse
       const tmp = document.createElement('template');
-      tmp.innerHTML = renderComment(nuevoComentario, id, cid);
-      const newNode = tmp.content.firstElementChild;
-      csec.appendChild(newNode);
-      // Update comment count
+      tmp.innerHTML = renderComment(newComment, id, cid);
+      csec.appendChild(tmp.content.firstElementChild);
       const cmtBtn = card?.querySelector('.pacts .comment-btn');
       if (cmtBtn) cmtBtn.innerHTML = `<i class="fi fi-rr-comment"></i> ${p.cmts.length}`;
     }
@@ -2190,48 +1915,33 @@ async function scmt(id) {
 
 async function dcmt(postId, cmtId) {
   postId = isNaN(postId) ? postId : Number(postId);
-  const p = findPost(postId); 
+  const p = findPost(postId);
   if (!p || !Array.isArray(p.cmts)) return;
-
-  const nuevosComentarios = p.cmts.filter(c => c.id !== cmtId);
-
-  const { error } = await db.from('posts').update({ cmts: nuevosComentarios }).eq('id', postId);
-
+  const updatedComments = p.cmts.filter(c => c.id !== cmtId);
+  const { error } = await db.from('posts').update({ cmts: updatedComments }).eq('id', postId);
   if (error) {
     toast('Error al eliminar comentario');
   } else {
-    p.cmts = nuevosComentarios;
+    p.cmts = updatedComments;
     toast('comentario eliminado');
-    // Patch solo el comentario específico sin re-render completo
     const cid = safeId(postId);
     const card = document.getElementById(`post-${cid}`);
     const csec = card?.querySelector('.csec');
     if (csec) {
-      // Rebuildear la sección de comentarios (es la más simple y segura)
       const cmtBtn = card?.querySelector('.pacts .comment-btn');
-      if (cmtBtn) cmtBtn.innerHTML = `<i class="fi fi-rr-comment"></i> ${nuevosComentarios.length}`;
-      const cmDivs = csec.querySelectorAll('.cm');
-      // Encontrar y eliminar el div del comentario que contiene el botón pulsado
-      cmDivs.forEach(div => {
+      if (cmtBtn) cmtBtn.innerHTML = `<i class="fi fi-rr-comment"></i> ${updatedComments.length}`;
+      csec.querySelectorAll('.cm').forEach(div => {
         const delBtn = div.querySelector('.cmt-del');
-        if (delBtn && delBtn.getAttribute('onclick')?.includes(cmtId)) {
-          div.remove();
-        }
+        if (delBtn && delBtn.getAttribute('onclick')?.includes(cmtId)) div.remove();
       });
     }
   }
 }
 
-// El input de avatar se crea UNA SOLA VEZ aquí y vive en el body —
-// no dentro del perfil renderizado — para que render() nunca lo destruya.
-// Esto soluciona el bug donde el segundo cambio de avatar no funciona.
 (function initAvatarInput() {
   if (document.getElementById('avup')) return;
   const inp = document.createElement('input');
-  inp.type = 'file';
-  inp.id = 'avup';
-  inp.accept = 'image/*';
-  inp.style.display = 'none';
+  inp.type = 'file'; inp.id = 'avup'; inp.accept = 'image/*'; inp.style.display = 'none';
   inp.addEventListener('change', havatar);
   document.body.appendChild(inp);
 })();
@@ -2240,25 +1950,17 @@ function upavatar() {
   let inp = document.getElementById('avup');
   if (!inp) {
     inp = document.createElement('input');
-    inp.type = 'file';
-    inp.id = 'avup';
-    inp.accept = 'image/*';
-    inp.style.display = 'none';
+    inp.type = 'file'; inp.id = 'avup'; inp.accept = 'image/*'; inp.style.display = 'none';
     inp.addEventListener('change', havatar);
     document.body.appendChild(inp);
   }
-  inp.value = ''; // reset por si acaso quedó un valor anterior
+  inp.value = '';
   inp.click();
 }
 
-// --- CACHÉ DE URLs FIRMADAS PARA AVATARES ---
-// Evita re-descargar el avatar en cada visita y reduce el egress de Supabase
-const _avatarCache = {}; // { userId: { url, expira } }
+const avatarCache = {};
 
 async function getSignedAvatarUrl(userId, path) {
-  // Los avatares están en Cloudflare — la URL en avatar_url ya es permanente.
-  // Esta función existe por compatibilidad pero simplemente devuelve null para
-  // que el llamador use avatar_url directamente.
   return null;
 }
 
@@ -2267,25 +1969,17 @@ const CLOUDFLARE_AVATAR_WORKER = 'https://sigilo-avatar.wenvargasmg.workers.dev'
 async function havatar(e) {
   const f = e.target.files?.[0];
   if (!f) return;
-
   if (!f.type.startsWith('image/')) return toast('el archivo debe ser una imagen');
   if (f.size > 3 * 1024 * 1024) return toast('la imagen debe pesar menos de 3MB');
 
   toast('subiendo foto...');
-  // NO limpiar e.target.value aquí — el reset se hace en upavatar() antes del click
-  // para evitar una carrera entre el reset y el evento change.
 
   try {
-    // 1. Subir al Worker de Cloudflare R2
     const formData = new FormData();
     formData.append('file', f);
     formData.append('userId', S.me.id);
 
-    const uploadRes = await fetch(`${CLOUDFLARE_AVATAR_WORKER}`, {
-      method: 'POST',
-      body: formData,
-    });
-
+    const uploadRes = await fetch(`${CLOUDFLARE_AVATAR_WORKER}`, { method: 'POST', body: formData });
     if (!uploadRes.ok) {
       const errText = await uploadRes.text();
       console.error('[havatar] Cloudflare error:', errText);
@@ -2294,38 +1988,23 @@ async function havatar(e) {
 
     const result = await uploadRes.json();
     if (!result.url) return toast('error: el Worker no devolvió una URL');
-    // Cache-buster: el Worker guarda el avatar con el mismo nombre (userId),
-    // así que sin esto el browser sirve la imagen cacheada aunque R2 ya la reemplazó.
     const publicUrl = result.url.split('?')[0] + '?v=' + Date.now();
 
-    // 2. Guardar URL en Supabase profiles
-    // IMPORTANTE: Authorization debe usar el access_token del usuario (no el anonKey)
-    // para que las Row Level Security policies de Supabase lo acepten correctamente,
-    // especialmente en móvil donde las policies se verifican más estrictamente.
     const base = window._sigiloSupabaseUrl || '';
     const key  = window._sigiloSupabaseAnonKey || '';
-    let accessToken = key; // fallback al anonKey
+    let accessToken = key;
     try {
       const { data: sessionData } = await db.auth.getSession();
-      if (sessionData?.session?.access_token) {
-        accessToken = sessionData.session.access_token;
-      }
+      if (sessionData?.session?.access_token) accessToken = sessionData.session.access_token;
     } catch(_) {}
     await fetch(`${base}/rest/v1/profiles?id=eq.${encodeURIComponent(S.me.id)}`, {
       method: 'PATCH',
-      headers: {
-        'Content-Type':  'application/json',
-        'apikey':        key,
-        'Authorization': `Bearer ${accessToken}`,
-        'Prefer':        'return=minimal',
-      },
+      headers: { 'Content-Type': 'application/json', 'apikey': key, 'Authorization': `Bearer ${accessToken}`, 'Prefer': 'return=minimal' },
       body: JSON.stringify({ avatar_url: publicUrl }),
     });
 
-    // 3. Actualizar estado local sin recargar
     S.me.user_metadata = S.me.user_metadata || {};
     S.me.user_metadata.avatar_url = publicUrl;
-    // Actualizar en profilePosts y posts para que se refleje en los cards
     const updatePost = p => { if (p.user_id === S.me.id) p.author_av = publicUrl; };
     S.posts.forEach(updatePost);
     if (S.profilePosts?.[S.me.id]) S.profilePosts[S.me.id].forEach(updatePost);
@@ -2340,13 +2019,9 @@ async function havatar(e) {
 
 async function openmod() {
   S.modal = true;
-  // Cargar bio desde profiles si user_metadata no la tiene todavía
   if (!S.me.user_metadata?.bio) {
     try {
-      const { data } = await db.from('profiles')
-        .select('bio')
-        .eq('id', S.me.id)
-        .single();
+      const { data } = await db.from('profiles').select('bio').eq('id', S.me.id).single();
       if (data?.bio) {
         S._profileBio = data.bio;
         S.me.user_metadata = S.me.user_metadata || {};
@@ -2360,8 +2035,8 @@ async function openmod() {
   }
   render();
 }
-function closemod(){S.modal=false;render();}
-function mclose(e){if(e.target===e.currentTarget)closemod();}
+function closemod() { S.modal = false; render(); }
+function mclose(e) { if (e.target === e.currentTarget) closemod(); }
 
 async function savemod() {
   const enEl = document.getElementById('en');
@@ -2371,36 +2046,28 @@ async function savemod() {
   const b = ebEl.value.trim();
   if (!n) return toast('el nombre no puede estar vacío');
 
-  // Selector específico: solo el botón guardar dentro del modal de editar perfil
   const btn = document.querySelector('.profile-edit-modal .savebtn, .profile-save-btn');
   if (btn) { btn.textContent = 'guardando...'; btn.disabled = true; }
 
   const oldName = S.me.user_metadata?.display_name || '';
 
-  // 1. Guardar en Neon Auth (updateUser — SupabaseAuthAdapter compatible)
   const { error } = await db.auth.updateUser({ data: { display_name: n, bio: b } });
   if (error) {
     if (btn) { btn.textContent = 'guardar'; btn.disabled = false; }
     return toast('Error al guardar perfil: ' + error.message);
   }
 
-  // 2. Actualizar S.me localmente (Neon Auth no siempre refleja metadatos al instante)
   S.me.user_metadata = S.me.user_metadata || {};
   S.me.user_metadata.display_name = n;
   S.me.user_metadata.bio = b;
   S._profileBio = b;
 
-  // 3. Sincronizar tabla profiles
   try {
-    const upsertData = { id: S.me.id, username: n, display_name: n, bio: b };
-    await db.from('profiles').upsert([upsertData], { onConflict: 'id' });
+    await db.from('profiles').upsert([{ id: S.me.id, username: n, display_name: n, bio: b }], { onConflict: 'id' });
   } catch(e) {}
 
-  // 4. Propagar el nuevo nombre a los posts si cambió
   if (n !== oldName) {
-    try {
-      await db.from('posts').update({ username: n }).eq('user_id', S.me.id);
-    } catch(e) {}
+    try { await db.from('posts').update({ username: n }).eq('user_id', S.me.id); } catch(e) {}
     S.posts.forEach(p => { if (p.user_id === S.me.id) p.username = n; });
   }
 
@@ -2410,27 +2077,19 @@ async function savemod() {
   toast('perfil actualizado ✦');
 }
 
-// --- TOGGLE PASSWORD VISIBILITY ---
 function togglePw(inputId, btn) {
   const inp = document.getElementById(inputId);
   if (!inp) return;
-  if (inp.type === 'password') {
-    inp.type = 'text';
-    btn.textContent = '🙈';
-  } else {
-    inp.type = 'password';
-    btn.textContent = '👁';
-  }
+  if (inp.type === 'password') { inp.type = 'text'; btn.textContent = '🙈'; }
+  else { inp.type = 'password'; btn.textContent = '👁'; }
 }
 
-// --- VALIDACION INLINE AUTH ---
 function validateLogin() {
   const email = document.getElementById('lu').value.trim();
   const err = document.getElementById('le');
   if (!email) { err.textContent = 'ingresa tu correo'; return false; }
   if (!email.includes('@')) { err.textContent = 'correo inválido'; return false; }
-  err.textContent = '';
-  return true;
+  err.textContent = ''; return true;
 }
 
 function validateRegister() {
@@ -2440,11 +2099,9 @@ function validateRegister() {
   if (!user) { err.textContent = 'elige un nombre de usuario'; return false; }
   if (user.length < 3) { err.textContent = 'el nombre de usuario debe tener al menos 3 caracteres'; return false; }
   if (!email || !email.includes('@')) { err.textContent = 'correo inválido'; return false; }
-  err.textContent = '';
-  return true;
+  err.textContent = ''; return true;
 }
 
-// Parchear login y register para validar antes de enviar
 const _origLogin = login;
 window.login = async function() {
   if (!validateLogin()) return;
@@ -2455,21 +2112,18 @@ window.register = async function() {
   if (!validateRegister()) return;
   await _origRegister();
 };
-// Alias para shims inline definidos antes del defer
 window._sigiloLogin = window.login;
 window._sigiloRegister = window.register;
 
-// Enter para enviar formularios de auth
 document.addEventListener('DOMContentLoaded', () => {
   ['lu'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') window.login(); });
   });
-  ['ru','re'].forEach(id => {
+  ['ru', 're'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') window.register(); });
   });
-  // Accesibilidad: logo navegable con teclado
   const logo = document.querySelector('.hlogo');
   if (logo) {
     logo.setAttribute('tabindex', '0');
@@ -2478,7 +2132,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-// --- SKELETON LOADING ---
 function showSkeletons(n = 4) {
   const mc = document.getElementById('mc');
   if (!mc) return;
@@ -2486,20 +2139,16 @@ function showSkeletons(n = 4) {
   mc.innerHTML = sk.repeat(n);
 }
 
-// --- INFINITE SCROLL ---
-let _sentinel = null;
+let scrollSentinel = null;
 function setupInfiniteScroll() {
-  if (_sentinel) { _sentinel.disconnect(); _sentinel = null; }
+  if (scrollSentinel) { scrollSentinel.disconnect(); scrollSentinel = null; }
   const el = document.getElementById('scroll-sentinel');
   if (!el) return;
-  _sentinel = new IntersectionObserver(entries => {
+  scrollSentinel = new IntersectionObserver(entries => {
     if (entries[0].isIntersecting && !S.loading) loadMore();
   }, { rootMargin: '300px' });
-  _sentinel.observe(el);
+  scrollSentinel.observe(el);
 }
-
-
-// ======== FEATURE 1: EXPLORAR / DESTACADOS ========
 
 async function goExplore() {
   S.explorePage = true; S.page = 'feed'; S.menu = null;
@@ -2532,9 +2181,8 @@ function closeExplore() {
 
 async function fetchExplorePosts() {
   const now = Date.now();
-  if (_exploreCache && (now - _exploreCacheTs) < EXPLORE_TTL) {
-    renderExplorePage(_exploreCache);
-    return;
+  if (exploreCache && (now - exploreCacheTime) < EXPLORE_TTL) {
+    renderExplorePage(exploreCache); return;
   }
   try {
     const since = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
@@ -2552,11 +2200,8 @@ async function fetchExplorePosts() {
       saved: Array.isArray(p.saved) ? p.saved : [],
       t: p.created_at
     })).sort((a, b) => b.likes.length - a.likes.length).slice(0, 30);
-    posts.forEach(ep => {
-      if (!S.posts.find(p => p.id === ep.id)) S.posts.push(ep);
-    });
+    posts.forEach(ep => { if (!S.posts.find(p => p.id === ep.id)) S.posts.push(ep); });
 
-    // Batch-fetch perfiles de autores que no están en caché para tener avatares frescos
     const unknownAuthorIds = [...new Set(
       posts.map(p => p.user_id).filter(uid => uid !== S.me.id && !S.users.find(u => u.id === uid))
     )];
@@ -2580,8 +2225,8 @@ async function fetchExplorePosts() {
       } catch(e) {}
     }
 
-    _exploreCache = posts;
-    _exploreCacheTs = Date.now();
+    exploreCache = posts;
+    exploreCacheTime = Date.now();
     renderExplorePage(posts);
   } catch(e) {
     const mc = document.getElementById('mc');
@@ -2601,8 +2246,8 @@ function renderExplorePage(posts) {
   const content = posts.length === 0
     ? `<div class="explore-empty"><div class="ei">🌸</div><div class="el">no hay publicaciones destacadas aún — vuelve más tarde ✦</div></div>`
     : `<div class="explore-section-label">✦ más populares hoy</div>` + posts.map((p, i) => {
-        const trendingBadge = i < 3 ? `<span class="explore-trending-badge"><i class="fi fi-rr-star" style="font-size:.62rem"></i> top ${i+1}</span>` : '';
-        return rpostExplore(p, trendingBadge);
+        const badge = i < 3 ? `<span class="explore-trending-badge"><i class="fi fi-rr-star" style="font-size:.62rem"></i> top ${i + 1}</span>` : '';
+        return rpostExplore(p, badge);
       }).join('');
   mc.innerHTML = `<div class="explore-page">
     <div class="explore-header">
@@ -2618,15 +2263,15 @@ function renderExplorePage(posts) {
 
 function rpostExplore(p, badge) {
   badge = badge || '';
-  const likes = Array.isArray(p.likes)?p.likes:[];
-  const saved  = Array.isArray(p.saved)?p.saved:[];
-  const cmts   = Array.isArray(p.cmts)?p.cmts:[];
+  const likes = Array.isArray(p.likes) ? p.likes : [];
+  const saved  = Array.isArray(p.saved) ? p.saved : [];
+  const cmts   = Array.isArray(p.cmts) ? p.cmts : [];
   const author = p.user_id === S.me.id
-    ? { name: S.me.user_metadata?.display_name||S.me.email, username: S.me.user_metadata?.display_name||S.me.email, avatar_url: S.me.user_metadata?.avatar_url||p.author_av||null }
-    : (S.users.find(x=>x.id===p.user_id) || { name:p.username||'Usuario', username:p.username||'Usuario', avatar_url:p.author_av||null });
+    ? { name: S.me.user_metadata?.display_name || S.me.email, username: S.me.user_metadata?.display_name || S.me.email, avatar_url: S.me.user_metadata?.avatar_url || p.author_av || null }
+    : (S.users.find(x => x.id === p.user_id) || { name: p.username || 'Usuario', username: p.username || 'Usuario', avatar_url: p.author_av || null });
   const liked = likes.includes(S.me.id);
   const isSaved = saved.includes(S.me.id);
-  const own = p.user_id===S.me.id;
+  const own = p.user_id === S.me.id;
   const cid = safeId(p.id);
   return `
   <div class="pcard" id="post-${cid}">
@@ -2637,116 +2282,92 @@ function rpostExplore(p, badge) {
         <div class="ptime" data-ts="${p.created_at}">${ago(p.created_at)}</div>
       </div>
       <span class="pbadge">${esc(p.category)}</span>${badge}
-      ${(own||isOwner())?`<div class="mwrap"><button class="dotsbtn" onclick="tmenu('${p.id}',event)">...</button></div>`:''}
+      ${(own || isOwner()) ? `<div class="mwrap"><button class="dotsbtn" onclick="tmenu('${p.id}',event)">...</button></div>` : ''}
     </div>
     <div class="pcontent">${esc(p.body)}</div>
     <div class="pacts">
-      <button class="abtn like-btn${liked?' liked':''}" onclick="tlike('${p.id}')"><i class="${liked?'fi fi-sr-heart':'fi fi-rr-heart'}"></i> ${likes.length}</button>
+      <button class="abtn like-btn${liked ? ' liked' : ''}" onclick="tlike('${p.id}')"><i class="${liked ? 'fi fi-sr-heart' : 'fi fi-rr-heart'}"></i> ${likes.length}</button>
       <button class="abtn comment-btn" onclick="tcmt('${p.id}')"><i class="fi fi-rr-comment"></i> ${cmts.length}</button>
-      <button class="abtn save-btn${isSaved?' sav':''}" onclick="tsave('${p.id}')"><i class="${isSaved?'fi fi-sr-bookmark':'fi fi-rr-bookmark'}"></i> ${isSaved?'guardado':'guardar'}</button>
+      <button class="abtn save-btn${isSaved ? ' sav' : ''}" onclick="tsave('${p.id}')"><i class="${isSaved ? 'fi fi-sr-bookmark' : 'fi fi-rr-bookmark'}"></i> ${isSaved ? 'guardado' : 'guardar'}</button>
       <button class="abtn copy-btn" onclick="copyPost('${p.id}')" title="copiar texto"><i class="fi fi-rr-copy"></i> copiar</button>
       <button class="abtn share-btn" onclick="sharePost('${p.id}',event)" title="compartir"><i class="fi fi-rr-share"></i><span class="share-label"> compartir</span></button>
     </div>
   </div>`;
 }
 
-// ======== FEATURE 2: ANCLAR POSTS EN PERFIL ========
-
 async function loadPinnedPosts() {
-  // Intentar cargar desde localStorage como caché inmediata (evita flash vacío)
   try {
     const cached = JSON.parse(localStorage.getItem('sigilo_pinned') || '{}');
     S.pinnedPosts = cached;
   } catch(e) { S.pinnedPosts = {}; }
 
-  // Luego sincronizar desde Supabase (fuente de verdad — persiste entre dispositivos)
   if (!S.me) return;
   try {
-    const { data } = await db.from('profiles')
-      .select('pinned_post_id')
-      .eq('id', S.me.id)
-      .maybeSingle();
+    const { data } = await db.from('profiles').select('pinned_post_id').eq('id', S.me.id).maybeSingle();
     if (data?.pinned_post_id) {
       S.pinnedPosts[S.me.id] = data.pinned_post_id;
     } else {
       delete S.pinnedPosts[S.me.id];
     }
-    // Actualizar caché local con el valor de Supabase
     try { localStorage.setItem('sigilo_pinned', JSON.stringify(S.pinnedPosts)); } catch(e) {}
-    // Re-renderizar si estamos en el perfil propio para reflejar el pin correcto
     if (S.page === 'profile' && S.puid === S.me.id) render();
-  } catch(e) { /* si falla red, el caché local ya está aplicado */ }
+  } catch(e) {}
 }
 
 async function pinPost(postId) {
-  postId = isNaN(postId)?postId:Number(postId);
-  const p = findPost(postId); if(!p) return;
+  postId = isNaN(postId) ? postId : Number(postId);
+  const p = findPost(postId); if (!p) return;
   if (p.user_id !== S.me.id) return;
 
-  const uid_key = S.me.id;
-  const isCurrentlyPinned = S.pinnedPosts[uid_key] === postId;
-
-  // Actualizar estado local inmediatamente (UX instantánea)
+  const isCurrentlyPinned = S.pinnedPosts[S.me.id] === postId;
   if (isCurrentlyPinned) {
-    delete S.pinnedPosts[uid_key];
-    toast('publicación desanclada');
+    delete S.pinnedPosts[S.me.id]; toast('publicación desanclada');
   } else {
-    S.pinnedPosts[uid_key] = postId;
-    toast('publicación anclada ✦');
+    S.pinnedPosts[S.me.id] = postId; toast('publicación anclada ✦');
   }
   try { localStorage.setItem('sigilo_pinned', JSON.stringify(S.pinnedPosts)); } catch(e) {}
   S.menu = null;
   renderPostMenu();
   render();
 
-  // Persistir en Supabase para que sobreviva entre sesiones y dispositivos
   try {
-    const newPinValue = isCurrentlyPinned ? null : postId;
-    await db.from('profiles')
-      .update({ pinned_post_id: newPinValue })
-      .eq('id', S.me.id);
+    await db.from('profiles').update({ pinned_post_id: isCurrentlyPinned ? null : postId }).eq('id', S.me.id);
   } catch(e) {
     console.error('[pinPost] Error al guardar en Supabase:', e);
     toast('anclado localmente (sin conexión)');
   }
 }
 
-// ======== FEATURE 3: LIKES EN COMENTARIOS ========
-
 async function tlikeCmt(postId, cmtId) {
-  postId = isNaN(postId)?postId:Number(postId);
-  const p = findPost(postId); if(!p) return;
-  if(!Array.isArray(p.cmts)) p.cmts=[];
-  const cmt = p.cmts.find(c=>c.id===cmtId); if(!cmt) return;
-  if(!Array.isArray(cmt.likes)) cmt.likes=[];
+  postId = isNaN(postId) ? postId : Number(postId);
+  const p = findPost(postId); if (!p) return;
+  if (!Array.isArray(p.cmts)) p.cmts = [];
+  const cmt = p.cmts.find(c => c.id === cmtId); if (!cmt) return;
+  if (!Array.isArray(cmt.likes)) cmt.likes = [];
   const i = cmt.likes.indexOf(S.me.id);
-  const wasLiked = i>-1;
-  if(wasLiked) cmt.likes.splice(i,1); else cmt.likes.push(S.me.id);
+  const wasLiked = i > -1;
+  if (wasLiked) cmt.likes.splice(i, 1); else cmt.likes.push(S.me.id);
   const isNowLiked = !wasLiked;
   const btn = document.querySelector(`[data-cmt-like="${cmtId}"]`);
-  if(btn) {
-    btn.className = `cmt-like-btn${isNowLiked?' liked':''}`;
+  if (btn) {
+    btn.className = `cmt-like-btn${isNowLiked ? ' liked' : ''}`;
     const icon = btn.querySelector('i');
-    if(icon) icon.className = isNowLiked?'fi fi-sr-heart':'fi fi-rr-heart';
+    if (icon) icon.className = isNowLiked ? 'fi fi-sr-heart' : 'fi fi-rr-heart';
     const countEl = btn.querySelector('.cmt-like-count');
-    if(countEl) countEl.textContent = cmt.likes.length > 0 ? cmt.likes.length : '';
-    if(isNowLiked) {
-      btn.classList.add('pop');
-      setTimeout(()=>btn.classList.remove('pop'),260);
-    }
+    if (countEl) countEl.textContent = cmt.likes.length > 0 ? cmt.likes.length : '';
+    if (isNowLiked) { btn.classList.add('pop'); setTimeout(() => btn.classList.remove('pop'), 260); }
   }
-  const {error} = await db.from('posts').update({cmts:p.cmts}).eq('id',postId);
-  if(error) {
+  const { error } = await db.from('posts').update({ cmts: p.cmts }).eq('id', postId);
+  if (error) {
     toast('Error al dar like');
-    if(wasLiked) cmt.likes.push(S.me.id); else { const idx=cmt.likes.indexOf(S.me.id); if(idx>-1) cmt.likes.splice(idx,1); }
+    if (wasLiked) cmt.likes.push(S.me.id);
+    else { const idx = cmt.likes.indexOf(S.me.id); if (idx > -1) cmt.likes.splice(idx, 1); }
   }
 }
 
-// --- COPY con feedback visual ---
 const _origCopyPost = copyPost;
 window.copyPost = function(id) {
-  const doFeedback = () => {
-    // Cambiar ícono del botón momentáneamente
+  const giveFeedback = () => {
     const btn = document.querySelector(`#post-${safeId(id)} .copy-btn`);
     if (btn) {
       const icon = btn.querySelector('i');
@@ -2763,13 +2384,12 @@ window.copyPost = function(id) {
     }
   };
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    const post = findPost(isNaN(id)?id:Number(id));
-    if (!post) return;
-    navigator.clipboard.writeText(post.body).then(() => { toast('copiado'); doFeedback(); }).catch(() => { fallbackCopy(post.body); doFeedback(); });
-  } else { _origCopyPost(id); doFeedback(); }
+    const p = findPost(isNaN(id) ? id : Number(id));
+    if (!p) return;
+    navigator.clipboard.writeText(p.body).then(() => { toast('copiado'); giveFeedback(); }).catch(() => { fallbackCopy(p.body); giveFeedback(); });
+  } else { _origCopyPost(id); giveFeedback(); }
 };
 
-// --- NOTIF BADGE EN MÓVIL ---
 const _origRenderNotifBadge = renderNotifBadge;
 window.renderNotifBadge = function() {
   _origRenderNotifBadge();
@@ -2781,57 +2401,49 @@ window.renderNotifBadge = function() {
   }
 };
 
-// --- SETUP INFINITE SCROLL AL CARGAR EL FEED ---
-// Patch gofeed para asegurar que infinite scroll se configure tras cada visita al feed
 const _origGofeed = gofeed;
 window.gofeed = function() {
   _origGofeed();
   setTimeout(setupInfiniteScroll, 300);
 };
 
-// --- EXPOSE ---
-window.tlike=tlike; window.tsave=tsave; window.tcmt=tcmt; window.scmt=scmt; window.dcmt=dcmt;
-window.tocol=tocol; window.dpost=dpost; window.tmenu=tmenu; window.vprof=vprof;
-window.post=post; window.setcat=setcat; window.setComposeCat=setComposeCat; window.stptab=stptab; window.loadMore=loadMore;
-window.gofeed=gofeed; window.goprofile=goprofile; window.logout=logout;
-window.openmod=openmod; window.closemod=closemod; window.mclose=mclose; window.savemod=savemod;
-window.upavatar=upavatar; window.stab=stab; window.login=login; window.register=register;
-window.openCreateFolder=openCreateFolder; window.openRenameFolder=openRenameFolder;
-window.closeFolderForm=closeFolderForm; window.createFolder=createFolder;
-window.renameFolder=renameFolder; window.deleteFolder=deleteFolder;
-window.assignToFolder=assignToFolder; window.openFolderPicker=openFolderPicker;
-window.closeFolderPicker=closeFolderPicker; window.toggleFolderView=toggleFolderView;
-window.toggleSearch=toggleSearch; window.searchUsers=searchUsers; window.goSearchUser=goSearchUser;
-window.havatar=havatar; window.copyPost=copyPost;
-window.openEditPost=openEditPost; window.closeEditPost=closeEditPost; window.saveEditPost=saveEditPost;
-window.toggleNotif=toggleNotif; window.goNotif=goNotif; window.clearNotifs=clearNotifs;
-window.confirmAction=confirmAction; window.renderConfirmModal=renderConfirmModal;
-window.togglePw=togglePw; window.renderPostMenu=renderPostMenu;
-window.gosettings=gosettings; window.selectTheme=selectTheme; window.rsettings=rsettings;
-window.goExplore=goExplore; window.closeExplore=closeExplore; window.fetchExplorePosts=fetchExplorePosts;
-window.pinPost=pinPost; window.tlikeCmt=tlikeCmt; window.renderProfilePosts=renderProfilePosts;
-window.fetchProfilePosts=fetchProfilePosts;
-window.sharePost=sharePost; window.copyPostLink=copyPostLink; window.nativeShare=nativeShare;
-window.startReply=startReply; window.cancelReply=cancelReply; window.renderComment=renderComment;
+window.tlike = tlike; window.tsave = tsave; window.tcmt = tcmt; window.scmt = scmt; window.dcmt = dcmt;
+window.tocol = tocol; window.dpost = dpost; window.tmenu = tmenu; window.vprof = vprof;
+window.post = post; window.setcat = setcat; window.setComposeCat = setComposeCat; window.stptab = stptab; window.loadMore = loadMore;
+window.gofeed = gofeed; window.goprofile = goprofile; window.logout = logout;
+window.openmod = openmod; window.closemod = closemod; window.mclose = mclose; window.savemod = savemod;
+window.upavatar = upavatar; window.stab = stab; window.login = login; window.register = register;
+window.openCreateFolder = openCreateFolder; window.openRenameFolder = openRenameFolder;
+window.closeFolderForm = closeFolderForm; window.createFolder = createFolder;
+window.renameFolder = renameFolder; window.deleteFolder = deleteFolder;
+window.assignToFolder = assignToFolder; window.openFolderPicker = openFolderPicker;
+window.closeFolderPicker = closeFolderPicker; window.toggleFolderView = toggleFolderView;
+window.toggleSearch = toggleSearch; window.searchUsers = searchUsers; window.goSearchUser = goSearchUser;
+window.havatar = havatar; window.copyPost = copyPost;
+window.openEditPost = openEditPost; window.closeEditPost = closeEditPost; window.saveEditPost = saveEditPost;
+window.toggleNotif = toggleNotif; window.goNotif = goNotif; window.clearNotifs = clearNotifs;
+window.confirmAction = confirmAction; window.renderConfirmModal = renderConfirmModal;
+window.togglePw = togglePw; window.renderPostMenu = renderPostMenu;
+window.gosettings = gosettings; window.selectTheme = selectTheme; window.rsettings = rsettings;
+window.goExplore = goExplore; window.closeExplore = closeExplore; window.fetchExplorePosts = fetchExplorePosts;
+window.pinPost = pinPost; window.tlikeCmt = tlikeCmt; window.renderProfilePosts = renderProfilePosts;
+window.fetchProfilePosts = fetchProfilePosts;
+window.sharePost = sharePost; window.copyPostLink = copyPostLink; window.nativeShare = nativeShare;
+window.startReply = startReply; window.cancelReply = cancelReply; window.renderComment = renderComment;
 
 showLoading();
 
-// Esperar a que neon-init.js haya cargado el SDK y expuesto window.db
 document.addEventListener('neon-ready', async () => {
-  // Verificar sesión activa
   try {
     const { data } = await db.auth.getSession();
     if (data?.session) {
       S.me = data.session.user;
 
-      // Si es un usuario nuevo (viene del registro en Kinde), crear su perfil en Supabase
       try {
         const pendingUsername = sessionStorage.getItem('sigilo_pending_username');
         if (pendingUsername) {
           sessionStorage.removeItem('sigilo_pending_username');
-          // Verificar si ya tiene perfil
-          const { data: existing } = await db.from('profiles')
-            .select('id').eq('id', S.me.id).maybeSingle();
+          const { data: existing } = await db.from('profiles').select('id').eq('id', S.me.id).maybeSingle();
           if (!existing) {
             await db.from('profiles').upsert([{
               id: S.me.id,
@@ -2840,13 +2452,12 @@ document.addEventListener('neon-ready', async () => {
               avatar_url: null,
               bio: '',
             }], { onConflict: 'id' });
-            // Actualizar S.me con el username elegido
             S.me.user_metadata = S.me.user_metadata || {};
             S.me.user_metadata.display_name = pendingUsername;
             S.me.user_metadata.username = pendingUsername;
           }
         }
-      } catch(e) { /* no bloquear el boot si falla */ }
+      } catch(e) {}
 
       boot();
     } else {
@@ -2859,14 +2470,12 @@ document.addEventListener('neon-ready', async () => {
   }
 });
 
-// ======== MOBILE BOTTOM NAV ========
-
 function mobSetActive(tab) {
-  ['mob-home','mob-explore','mob-community','mob-search','mob-notif','mob-profile','mob-settings'].forEach(id => {
+  ['mob-home', 'mob-explore', 'mob-community', 'mob-search', 'mob-notif', 'mob-profile', 'mob-settings'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.remove('active');
   });
-  const map = { home:'mob-home', explore:'mob-explore', community:'mob-community', search:'mob-search', notif:'mob-notif', profile:'mob-profile', settings:'mob-settings' };
+  const map = { home: 'mob-home', explore: 'mob-explore', community: 'mob-community', search: 'mob-search', notif: 'mob-notif', profile: 'mob-profile', settings: 'mob-settings' };
   const el = document.getElementById(map[tab]);
   if (el) el.classList.add('active');
 }
@@ -2874,8 +2483,7 @@ function mobSetActive(tab) {
 function mobToggleSearch() {
   const panel = document.getElementById('mobSearchPanel');
   if (!panel) return;
-  const isOpen = panel.style.display !== 'none';
-  if (isOpen) {
+  if (panel.style.display !== 'none') {
     mobCloseSearch();
   } else {
     panel.style.display = 'block';
@@ -2891,7 +2499,6 @@ function mobCloseSearch() {
   if (inp) inp.value = '';
   const res = document.getElementById('mobSearchResults');
   if (res) res.innerHTML = '';
-  // Restaurar activo según página actual
   if (S.page === 'feed') mobSetActive('home');
   else if (S.page === 'settings') mobSetActive('settings');
   else mobSetActive('profile');
@@ -2937,13 +2544,10 @@ async function mobSearchUsers() {
 
 function mobGoSearchUser(id) { mobCloseSearch(); vprof(id); }
 
-// Inyectar botón salir en perfil (solo móvil)
 function injectMobLogout() {
   if (window.innerWidth > 640) return;
-  // El perfil se renderiza en .ppage, dentro de main#mc
   const ppage = document.querySelector('.ppage');
-  if (!ppage) return;
-  if (ppage.querySelector('.mob-logout-btn')) return; // ya existe
+  if (!ppage || ppage.querySelector('.mob-logout-btn')) return;
   ppage.style.position = 'relative';
   const btn = document.createElement('button');
   btn.className = 'mob-logout-btn';
@@ -2953,11 +2557,9 @@ function injectMobLogout() {
   ppage.appendChild(btn);
 }
 
-// Patch nav() para sincronizar el estado activo del mob-nav
 const _origNav = nav;
 window.nav = function() {
   _origNav();
-  // Sincronizar mob-nav active
   if (S.explorePage) mobSetActive('explore');
   else if (S.communityPage) mobSetActive('community');
   else if (S.page === 'settings') mobSetActive('settings');
@@ -2965,7 +2567,6 @@ window.nav = function() {
   else mobSetActive('home');
 };
 
-// Patch render() para inyectar botón logout en perfil
 const _origRender = typeof render === 'function' ? render : null;
 if (_origRender) {
   window.render = function() {
@@ -2974,7 +2575,6 @@ if (_origRender) {
   };
 }
 
-// Cerrar search móvil al hacer click fuera
 document.addEventListener('click', e => {
   const panel = document.getElementById('mobSearchPanel');
   if (panel && panel.style.display !== 'none') {
@@ -2984,7 +2584,6 @@ document.addEventListener('click', e => {
   }
 });
 
-// Exponer funciones móviles
 window.mobToggleSearch = mobToggleSearch;
 window.mobCloseSearch = mobCloseSearch;
 window.mobSearchUsers = mobSearchUsers;
@@ -2994,7 +2593,7 @@ window.mobSetActive = mobSetActive;
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
-      .then(reg => console.log('Sigilo PWA: Instalación lista ✅'))
+      .then(() => console.log('Sigilo PWA: Instalación lista ✅'))
       .catch(err => console.log('Sigilo PWA: Error ❌', err));
   });
 }
@@ -3006,7 +2605,6 @@ function injectChatBtnIntoHeader() {
   if (!chatBtn || container.contains(chatBtn)) return;
   container.appendChild(chatBtn);
 }
-// Intentar inmediatamente y también después de un pequeño delay por si script_chat carga tarde
 injectChatBtnIntoHeader();
 setTimeout(injectChatBtnIntoHeader, 500);
 setTimeout(injectChatBtnIntoHeader, 1500);
